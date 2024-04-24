@@ -15,7 +15,8 @@
 
 <script lang="ts">
 import { defineComponent } from 'vue';
-import { useSearchTypeStore } from 'stores/app_states';
+import { useChatStore} from 'stores/app_states';
+import { Message } from 'src/components/models';
 
 export default defineComponent({
   name: 'IndexPage',
@@ -37,13 +38,15 @@ export default defineComponent({
         return;
       }
 
-      const store = useSearchTypeStore();
+      const store = useChatStore();
 
       const newMessage = document.createElement('div');
       newMessage.classList.add('message', 'user-message');
       const newMessageText = document.createTextNode(this.messageText);
       newMessage.appendChild(newMessageText);
       (this.$refs.message_container as HTMLDivElement).appendChild(newMessage);
+
+      
 
       const botMessage = document.createElement('div');
       botMessage.classList.add('message', 'bot-message');
@@ -63,7 +66,7 @@ export default defineComponent({
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ message: newMessageText.nodeValue, search_type: store.getType })
+          body: JSON.stringify({ message: newMessageText.nodeValue, search_type: store.getType, history: store.getMessages })
         });
 
         if (!response.ok) {
@@ -85,6 +88,24 @@ export default defineComponent({
           const chunk = decoder.decode(value, { stream: true});
           botMessageText.nodeValue += chunk;
         }
+
+        if (store.getMessages.length > 10) {
+          store.deleteMessage();
+          store.deleteMessage();
+        }
+
+        const userMessage: Message  = {
+        text: newMessageText.nodeValue || '',
+        role: 'user'
+        };
+
+        const botResponse: Message = {
+          text: botMessageText.nodeValue || '',
+          role: 'assistant'
+        }
+
+        store.addMessage(userMessage);
+        store.addMessage(botResponse);
 
       } catch (error) {
         console.error(error);

@@ -1,5 +1,6 @@
 import openai
 import os
+import json
 from flask import Flask, Response, request, jsonify, stream_with_context
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -34,9 +35,31 @@ def index():
     
 @app.route('/send-message', methods=['POST'])
 def send_message():
-    message_text = request.json.get('message')
-    if not message_text:
+    search_type = request.json.get('search_type')
+    
+    user_query = request.json.get('message')
+    if not user_query:
         return jsonify({'error': 'Message text is empty'}), 400
+    
+    message_history = request.json.get('history')
+    if len(message_history) > 0:
+        message_list = []
+        
+        message_list.append({"role": "system", "content": bot_system_message})
+        
+        for message in message_history:
+            message_text = message.get('text')
+            message_role = message.get('role')
+            
+            message_dict = {"role": message_role, "content": message_text}
+            message_list.append(message_dict)
+            
+        message_list.append({"role": "user", "content": user_query})
+    else:
+        message_list = []
+        
+        message_list.append({"role": "system", "content": bot_system_message})
+        message_list.append({"role": "user", "content": user_query})
     
     try:
         @stream_with_context
@@ -44,9 +67,7 @@ def send_message():
             response = client.chat.completions.create( #poslanie requestu na azure openai api na odpoved modelu chatGPT-35-turbo s vlastnymi datami
                 model = openai_model_name,
                 stream=True,
-                messages = [{"role": "system", "content": bot_system_message},
-                            {"role": "user", "content": message_text}
-                ],
+                messages = message_list,
                 extra_body={
                     "data_sources": [
                         {
@@ -58,7 +79,7 @@ def send_message():
                                     "key": search_key
                                 },
                                 "index_name": "index2", #neberie premennu search_index?
-                                "query_type": request.json.get('search_type'),
+                                "query_type": search_type,
                                 "embedding_dependency": {
                                     "type": "deployment_name",
                                     "deployment_name": "text-embedding-ada-002"

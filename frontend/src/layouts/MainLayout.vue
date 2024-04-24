@@ -39,7 +39,7 @@
 
 <script lang="ts">
 import { defineComponent } from 'vue';
-import { useSearchTypeStore } from 'stores/app_states';
+import { useChatStore } from 'stores/app_states';
 
 export default defineComponent({
   name: 'MainLayout',
@@ -62,7 +62,7 @@ export default defineComponent({
   methods: {
     selectSearchType (selection: string) {
       this.selected_type = selection;
-      const store = useSearchTypeStore();
+      const store = useChatStore();
 
       switch (this.selected_type) {
         case 'Fulltext':
