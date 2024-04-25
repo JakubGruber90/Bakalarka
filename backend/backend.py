@@ -10,7 +10,7 @@ CORS(app)
 
 load_dotenv("C:/FIIT_STU/bakalarka/Implementacia/moja_appka_quasar/.env")
 
-bot_system_message = "You are a helpful assistant." #sprava pre model, ako sa ma spravat
+bot_system_message = "You are a helpful assistant that answers questions." #sprava pre model, ako sa ma spravat
 
 #premenne na pristup do openai api
 openai_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
@@ -61,51 +61,85 @@ def send_message():
         message_list.append({"role": "system", "content": bot_system_message})
         message_list.append({"role": "user", "content": user_query})
     
-    try:
-        @stream_with_context
-        def generate_response_stream():
-            response = client.chat.completions.create( #poslanie requestu na azure openai api na odpoved modelu chatGPT-35-turbo s vlastnymi datami
-                model = openai_model_name,
-                stream=True,
-                messages = message_list,
-                extra_body={
-                    "data_sources": [
-                        {
-                            "type": "azure_search",
-                            "parameters": {
-                                "endpoint": "https://aivyhladavanie.search.windows.net", #neviem, preco nechce zobrat premennu search_endpoint?
-                                "authentication": {
-                                    "type": "api_key",
-                                    "key": search_key
-                                },
-                                "index_name": "index2", #neberie premennu search_index?
-                                "query_type": search_type,
-                                "embedding_dependency": {
-                                    "type": "deployment_name",
-                                    "deployment_name": "text-embedding-ada-002"
-                                },
-                                "fields_mapping": {
-                                    "title_field": "title",
-                                    "url_field": "url",
-                                    "filepath_field": "filepath",
-                                    "content_fields": ["content"],
-                                    "vector_fields": ["contentVector"]
-                                },
+    if request.json.get('own_data'):  
+        try:
+            @stream_with_context
+            def generate_response_stream_with_data():
+                response = client.chat.completions.create( #poslanie requestu na azure openai api na odpoved modelu chatGPT-35-turbo s vlastnymi datami
+                    model = openai_model_name,
+                    stream=True,
+                    messages = message_list,
+                    extra_body={
+                        "data_sources": [
+                            {
+                                "type": "azure_search",
+                                "parameters": {
+                                    "endpoint": "https://aivyhladavanie.search.windows.net", #neviem, preco nechce zobrat premennu search_endpoint?
+                                    "authentication": {
+                                        "type": "api_key",
+                                        "key": search_key
+                                    },
+                                    "index_name": "index2", #neberie premennu search_index?
+                                    "query_type": search_type,
+                                    "embedding_dependency": {
+                                        "type": "deployment_name",
+                                        "deployment_name": "text-embedding-ada-002"
+                                    },
+                                    "fields_mapping": {
+                                        "title_field": "title",
+                                        "url_field": "url",
+                                        "filepath_field": "filepath",
+                                        "content_fields": ["content"],
+                                        "vector_fields": ["contentVector"]
+                                    },
+                                }
                             }
-                        }
-                    ]
-                }
-            )
-            
-            for event in response:
-                if event.choices[0].delta.content is not None:
-                    response_message = event.choices[0].delta.content
-                    yield response_message
-            
-        return Response(generate_response_stream(), mimetype="application/json")
+                        ]
+                    }
+                )
+                
+                for event in response:
+                    print('\nEVENT:\n', event)
+                    if event.choices[0].delta.content is not None:
+                        response_message = event.choices[0].delta.content
+                        yield json.dumps({'message': response_message})+'/|/'
+                        
+                    try:
+                        if event.choices[0].delta.content is None and event.choices[0].delta.context is not None:
+                            citations = event.choices[0].delta.context                
+                            yield json.dumps({'context': citations})+'/|/'
+                    except Exception as err:
+                        print('\nERROR GETTING CITATIONS: ', err, '\n')
+                                    
+            return Response(generate_response_stream_with_data(), mimetype="application/json")
 
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+    else:
+        try:
+            @stream_with_context
+            def generate_response_stream_no_data():
+                response = client.chat.completions.create(
+                    model = openai_model_name,
+                    stream=True,
+                    messages = message_list,
+                )
+                
+                for event in response:
+                    print('\nEVENT:\n', event, '\n')
+                    try:
+                        if event.choices[0].delta.content is not None:
+                            response_message = event.choices[0].delta.content
+                            yield json.dumps({'message': response_message})+'/|/'
+                    except Exception as err:
+                        print('ERROR WITH CHUNK ON NO OWN DATA QUERY: ', err)
+                        
+                        
+                                    
+            return Response(generate_response_stream_no_data(), mimetype="application/json")
 
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+        
 if __name__ == '__main__':
     app.run(debug=True)

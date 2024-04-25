@@ -7,6 +7,15 @@
           ChatGPT RAG chat
         </q-toolbar-title>
 
+        <q-toggle
+        class="chatdata-toggle"
+        v-model="chat_with_data"
+        label="Chat with own data">
+          <q-tooltip class="tooltip">
+            Toggle between chatting with own data and without, default is own data enabled
+            </q-tooltip>
+        </q-toggle>
+
         <q-btn-dropdown
           auto-close
           v-model:label=selected_type
@@ -22,7 +31,7 @@
 
           </q-list>
 
-          <q-tooltip class="search-tooltip">
+          <q-tooltip class="tooltip">
               Types of search for data retrieval
           </q-tooltip>
 
@@ -38,15 +47,11 @@
 </template>
 
 <script lang="ts">
-import { defineComponent } from 'vue';
+import { defineComponent, watch } from 'vue';
 import { useChatStore } from 'stores/app_states';
 
 export default defineComponent({
   name: 'MainLayout',
-
-  components: {
-    
-  },
 
   data () {
     return {
@@ -56,7 +61,16 @@ export default defineComponent({
         {label: 'Hybrid'}
       ],
       selected_type: 'Fulltext',
+      chat_with_data: true,
     }
+  },
+
+  mounted() {
+    const store = useChatStore();
+
+    watch(() => this.chat_with_data, (newValue) => {
+      store.changeChatWithData(newValue)
+    })
   },
 
   methods: {
@@ -81,6 +95,19 @@ export default defineComponent({
 </script>
 
 <style>
+.chatdata-toggle {
+  margin-right: 3%;
+  font-size: 17px;
+}
+
+.q-toggle__thumb {
+  color:#34597e;
+}
+
+.q-toggle__track {
+  color:#34597e;
+}
+
 .search-type-button {
   width: 150px;
   max-width: 150px;
@@ -88,7 +115,7 @@ export default defineComponent({
   background-color: #34597e;
 }
 
-.search-tooltip {
+.tooltip {
   background-color: #34597e;
 }
 </style>

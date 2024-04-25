@@ -5,7 +5,8 @@ export const useChatStore = defineStore('chatStore', {
   state: () => {
     return {
       type: 'simple',
-      messages: [] as Message[]
+      messages: [] as Message[],
+      chat_with_data: true
     };
   },
 
@@ -20,12 +21,18 @@ export const useChatStore = defineStore('chatStore', {
 
     deleteMessage() {
       this.messages.shift()
+    },
+
+    changeChatWithData(newValue: boolean) {
+      this.chat_with_data = newValue;
     }
   },
 
   getters: {
     getType: (state) => state.type,
 
-    getMessages: (state) => state.messages
+    getMessages: (state) => state.messages,
+
+    getChatWithData: (state) => state.chat_with_data
   }
 });

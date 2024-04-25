@@ -16,7 +16,7 @@
 <script lang="ts">
 import { defineComponent } from 'vue';
 import { useChatStore} from 'stores/app_states';
-import { Message } from 'src/components/models';
+import { Message, Citation } from 'src/components/models';
 
 export default defineComponent({
   name: 'IndexPage',
@@ -46,8 +46,6 @@ export default defineComponent({
       newMessage.appendChild(newMessageText);
       (this.$refs.message_container as HTMLDivElement).appendChild(newMessage);
 
-      
-
       const botMessage = document.createElement('div');
       botMessage.classList.add('message', 'bot-message');
 
@@ -66,7 +64,7 @@ export default defineComponent({
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ message: newMessageText.nodeValue, search_type: store.getType, history: store.getMessages })
+          body: JSON.stringify({ message: newMessageText.nodeValue, search_type: store.getType, history: store.getMessages, own_data: store.getChatWithData })
         });
 
         if (!response.ok) {
@@ -80,13 +78,23 @@ export default defineComponent({
         const reader = response.body?.getReader();
         if (!reader) { throw new Error('ReadableStream not available');}
         let decoder = new TextDecoder();
-        
+      
+        let citations = [] as Citation[];
         while (true) {
           const { done, value } = await reader?.read();
           if (done) break;
 
-          const chunk = decoder.decode(value, { stream: true});
-          botMessageText.nodeValue += chunk;
+          const chunk = decoder.decode(value, { stream: true });
+          const jsonStrings = chunk.split('/|/').filter(Boolean);
+          jsonStrings.forEach(jsonString => {
+            const parsedChunk = JSON.parse(jsonString);
+
+            if (parsedChunk.message) {
+              botMessageText.nodeValue += parsedChunk.message;
+            } else if (parsedChunk.context) {
+              citations = parsedChunk.context.citations;
+            }
+          });
         }
 
         if (store.getMessages.length > 10) {
@@ -106,6 +114,14 @@ export default defineComponent({
 
         store.addMessage(userMessage);
         store.addMessage(botResponse);
+
+        if (citations.length > 0) {
+          botMessageText.nodeValue += '\n\nSources:\n' //pridavanie citacii po vlozeni sprav do store, aby neboli zahrnute v kontexte
+
+          citations.forEach((citation, index) => {
+            botMessageText.nodeValue += `[doc${index + 1}] `+citation.filepath+'\n'
+          });
+        }
 
       } catch (error) {
         console.error(error);
