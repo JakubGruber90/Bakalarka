@@ -115,11 +115,20 @@ export default defineComponent({
         store.addMessage(userMessage);
         store.addMessage(botResponse);
 
-        if (citations.length > 0) {
-          botMessageText.nodeValue += '\n\nSources:\n' //pridavanie citacii po vlozeni sprav do store, aby neboli zahrnute v kontexte
+        if (citations.length > 0) { //pridavanie citacii po vlozeni sprav do store, aby neboli zahrnute v kontexte
+          const cited_docs = botMessageText.nodeValue?.match(/\[(doc\d\d?\d?)]/g);
+          const unique_cited_docs = cited_docs?.filter((value, index, self) => {
+            return self.indexOf(value) === index;
+          })
 
+          botMessageText.nodeValue += '\n\nSources:\n';
+
+          const filtered_citations = [] as Citation[];
           citations.forEach((citation, index) => {
-            botMessageText.nodeValue += `[doc${index + 1}] `+citation.filepath+'\n'
+            if (unique_cited_docs?.includes(`[doc${index + 1}]`)) {
+              filtered_citations.push(citation);
+              botMessageText.nodeValue += `[doc${index + 1}] ${citation.filepath} part${parseInt(citation.chunk_id) + 1}\n`;
+            }
           });
         }
 
