@@ -24,7 +24,7 @@ from bs4 import BeautifulSoup
 from langchain.text_splitter import MarkdownTextSplitter, RecursiveCharacterTextSplitter, PythonCodeTextSplitter
 from tqdm import tqdm
 
-load_dotenv("C:/FIIT_STU/bakalarka/Implementacia/moja_appka_quasar/.env") #KUBO: pridane
+load_dotenv() #KUBO: pridane
 
 FILE_FORMAT_DICT = {
         "md": "markdown",

@@ -1,5 +1,5 @@
 <template>
-  <q-page class="column items-center justify-evenly chat-page">
+  <q-page class="column items-center justify-evenly">
 
     <div class="message-container" ref="message_container"></div>
 
@@ -184,23 +184,23 @@ export default defineComponent({
   flex-direction: column;
 }
 
-.chat-page::-webkit-scrollbar {
+::-webkit-scrollbar {
   width: 10px;
 }
 
-.chat-page::-webkit-scrollbar-track {
+::-webkit-scrollbar-track {
   background: #f1f1f1; 
   border-radius: 10px;  
   margin-left: 5px;
 }
  
-.chat-page::-webkit-scrollbar-thumb {
+::-webkit-scrollbar-thumb {
   background: #91b6dc; 
   border-radius: 10px;
   margin-left: 5px;
 }
 
-.chat-page::-webkit-scrollbar-thumb:hover {
+::-webkit-scrollbar-thumb:hover {
   background: #627b94; 
 }
 

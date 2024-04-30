@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 app = Flask(__name__)
 CORS(app)
 
-load_dotenv("C:/FIIT_STU/bakalarka/Implementacia/moja_appka_quasar/.env")
+load_dotenv()
 
 bot_system_message = "You are a helpful assistant that answers questions." #sprava pre model, ako sa ma spravat
 
@@ -65,6 +65,13 @@ def send_message():
         try:
             @stream_with_context
             def generate_response_stream_with_data():
+                
+                if (search_endpoint[0] == 'https://aivyhladavanie.search.windows.net'):
+                    print('\nSUCCESS\n')
+                else:
+                    print('\nWRONK: ', search_endpoint, type(search_endpoint), '\n')
+                    print('\GUT: ', 'https://aivyhladavanie.search.windows.net', type('https://aivyhladavanie.search.windows.net'), '\n')
+                    
                 response = client.chat.completions.create( #poslanie requestu na azure openai api na odpoved modelu chatGPT-35-turbo s vlastnymi datami
                     model = openai_model_name,
                     stream=True,
@@ -74,12 +81,12 @@ def send_message():
                             {
                                 "type": "azure_search",
                                 "parameters": {
-                                    "endpoint": "https://aivyhladavanie.search.windows.net", #neviem, preco nechce zobrat premennu search_endpoint?
+                                    "endpoint": search_endpoint[0],
                                     "authentication": {
                                         "type": "api_key",
                                         "key": search_key
                                     },
-                                    "index_name": "index2", #neberie premennu search_index?
+                                    "index_name": search_index[0],
                                     "query_type": search_type,
                                     "embedding_dependency": {
                                         "type": "deployment_name",
@@ -142,4 +149,4 @@ def send_message():
             return jsonify({'error': str(e)}), 500
         
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port='5000', debug=True)
