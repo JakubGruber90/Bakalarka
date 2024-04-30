@@ -1,14 +1,24 @@
 <template>
-  <q-page class="column items-center justify-evenly">
+  <q-page class="column items-center justify-evenly chat-page">
 
     <div class="message-container" ref="message_container"></div>
 
-   <div class="input-container">
+    <div class="input-container">
       <textarea class="user-input" ref="user_input" placeholder="Type here..." required autofocus v-model="messageText" @keypress.enter.prevent="sendMessage">
       </textarea>
       <q-btn class="send-button" round icon="send" @click="sendMessage" />
-   </div>
-    
+    </div>
+  
+    <q-drawer 
+        class="citation-area"
+        v-model="citationsOpen"
+        :width="300"
+        bordered> 
+        <q-btn class="citation-close" icon="close" fab-mini @click="citationsOpen = ! citationsOpen" />
+      <span style="font-size: 22px;"> Source: </span>
+      <span style="font-size: 28px;"> {{ citationHeading }} </span>
+      <span> {{ citationContent }} </span>
+    </q-drawer>
 
   </q-page>
 </template>
@@ -71,9 +81,9 @@ export default defineComponent({
           throw new Error('Failed to get response from backend.');
         }
 
-        const botMessageText = document.createTextNode('');
+        const botMessageContent = document.createElement('div');
         botMessage.removeChild(loader);
-        botMessage.appendChild(botMessageText);
+        botMessage.appendChild(botMessageContent);
 
         const reader = response.body?.getReader();
         if (!reader) { throw new Error('ReadableStream not available');}
@@ -90,7 +100,7 @@ export default defineComponent({
             const parsedChunk = JSON.parse(jsonString);
 
             if (parsedChunk.message) {
-              botMessageText.nodeValue += parsedChunk.message;
+              botMessageContent.innerHTML += parsedChunk.message;
             } else if (parsedChunk.context) {
               citations = parsedChunk.context.citations;
             }
@@ -108,7 +118,7 @@ export default defineComponent({
         };
 
         const botResponse: Message = {
-          text: botMessageText.nodeValue || '',
+          text: botMessageContent.innerHTML || '',
           role: 'assistant'
         }
 
@@ -116,18 +126,23 @@ export default defineComponent({
         store.addMessage(botResponse);
 
         if (citations.length > 0) { //pridavanie citacii po vlozeni sprav do store, aby neboli zahrnute v kontexte
-          const cited_docs = botMessageText.nodeValue?.match(/\[(doc\d\d?\d?)]/g);
+          const cited_docs = botMessageContent.innerHTML?.match(/\[(doc\d\d?\d?)]/g);
           const unique_cited_docs = cited_docs?.filter((value, index, self) => {
             return self.indexOf(value) === index;
           })
 
-          botMessageText.nodeValue += '\n\nSources:\n';
+          botMessageContent.innerHTML += '<br><br>Sources:<br>';
 
-          const filtered_citations = [] as Citation[];
           citations.forEach((citation, index) => {
             if (unique_cited_docs?.includes(`[doc${index + 1}]`)) {
-              filtered_citations.push(citation);
-              botMessageText.nodeValue += `[doc${index + 1}] ${citation.filepath} part${parseInt(citation.chunk_id) + 1}\n`;
+              const citationLink = document.createElement('a');
+              citationLink.setAttribute('href', '#');
+              citationLink.setAttribute('data-heading', citation.title);
+              citationLink.setAttribute('data-content', citation.content);
+              citationLink.addEventListener('click', this.citationClick);
+              citationLink.textContent = `[doc${index + 1}] ${citation.filepath} part${parseInt(citation.chunk_id) + 1}`;
+              botMessageContent.appendChild(citationLink);
+              botMessageContent.appendChild(document.createElement('br'));
             }
           });
         }
@@ -135,13 +150,22 @@ export default defineComponent({
       } catch (error) {
         console.error(error);
       }
-    }  
+    },
+    
+    citationClick(event: MouseEvent) {
+      event.preventDefault();
+      this.citationsOpen = true;
+      this.citationHeading = (event.target as HTMLElement).getAttribute('data-heading') || '';
+      this.citationContent = (event.target as HTMLElement).getAttribute('data-content') || ''; 
+    }
   },
 
   data () {
     return {
       messageText: '',
-      isLoading: false
+      citationsOpen: false,
+      citationHeading: '',
+      citationContent: '',
     };
   }
 });
@@ -153,10 +177,41 @@ export default defineComponent({
   flex-direction: column;
 }
 
+.citation-area {
+  padding: 10px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-page::-webkit-scrollbar {
+  width: 10px;
+}
+
+.chat-page::-webkit-scrollbar-track {
+  background: #f1f1f1; 
+  border-radius: 10px;  
+  margin-left: 5px;
+}
+ 
+.chat-page::-webkit-scrollbar-thumb {
+  background: #91b6dc; 
+  border-radius: 10px;
+  margin-left: 5px;
+}
+
+.chat-page::-webkit-scrollbar-thumb:hover {
+  background: #627b94; 
+}
+
+.citation-close {
+  align-self: flex-end;
+}
+
 .input-container {
   position: fixed;
   bottom: 0;
-  width: 1250px;
+  width: 1200px;
   max-width: 100%;
   max-height: 25vh;
 }
@@ -228,26 +283,6 @@ export default defineComponent({
 .bot-message {
   align-self: flex-start;
   left: 0;
-}
-
-.message-container::-webkit-scrollbar {
-  width: 10px;
-}
-
-.message-container::-webkit-scrollbar-track {
-  background: #f1f1f1; 
-  border-radius: 10px;  
-  margin-left: 5px;
-}
- 
-.message-container::-webkit-scrollbar-thumb {
-  background: #91b6dc; 
-  border-radius: 10px;
-  margin-left: 5px;
-}
-
-.message-container::-webkit-scrollbar-thumb:hover {
-  background: #627b94; 
 }
 
 .loader {
