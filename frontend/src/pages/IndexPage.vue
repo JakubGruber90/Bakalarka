@@ -74,7 +74,17 @@ export default defineComponent({
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ message: newMessageText.nodeValue, search_type: store.getType, history: store.getMessages, own_data: store.getChatWithData })
+          body: JSON.stringify({ 
+            message: newMessageText.nodeValue, 
+            search_type: store.getType, 
+            history: store.getMessages, 
+            own_data: store.getChatWithData, 
+            topNDocs: store.getTopNDocs, 
+            strictness: store.getStrictness, 
+            temperature: store.getTemperature,
+            presence_penalty: store.getPresencePenalty,
+            frequence_penalty: store.getFrequencePenalty
+          })
         });
 
         if (!response.ok) {
@@ -100,7 +110,9 @@ export default defineComponent({
             const parsedChunk = JSON.parse(jsonString);
 
             if (parsedChunk.message) {
-              botMessageContent.innerHTML += parsedChunk.message;
+              if (parsedChunk.message === 'The requested information is not found in the retrieved data. Please try another query or topic.') {
+                botMessageContent.innerHTML = 'Požadovaná informácia sa nenachádza vo Vašich dátach. Prosím skúste ďaľšiu otázku alebo tému.'
+              } else {botMessageContent.innerHTML += parsedChunk.message;}
             } else if (parsedChunk.context) {
               citations = parsedChunk.context.citations;
             }
@@ -125,13 +137,13 @@ export default defineComponent({
         store.addMessage(userMessage);
         store.addMessage(botResponse);
 
-        if (citations.length > 0) { //pridavanie citacii po vlozeni sprav do store, aby neboli zahrnute v kontexte
-          const cited_docs = botMessageContent.innerHTML?.match(/\[(doc\d\d?\d?)]/g);
+        const cited_docs = botMessageContent.innerHTML?.match(/\[(doc\d\d?\d?)]/g);
+        if (cited_docs && cited_docs.length > 0) { //pridavanie citacii po vlozeni sprav do store, aby neboli zahrnute v kontexte
           const unique_cited_docs = cited_docs?.filter((value, index, self) => {
             return self.indexOf(value) === index;
           })
 
-          botMessageContent.innerHTML += '<br><br>Sources:<br>';
+          botMessageContent.innerHTML += '<br><br>Zdroje:<br>';
 
           citations.forEach((citation, index) => {
             if (unique_cited_docs?.includes(`[doc${index + 1}]`)) {
@@ -265,7 +277,7 @@ export default defineComponent({
 }
 
 .message {
-  background-color: #f0f0f0;
+  background-color: #dddddd;
   border-radius: 10px;
   padding: 10px;
   margin: 10px;

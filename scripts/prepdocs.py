@@ -140,7 +140,7 @@ def create_and_populate_index(
         use_layout=True,
         ignore_errors=False,
         njobs=1,
-        add_embeddings=False, #KUBO: bolo False
+        add_embeddings=True, #KUBO: bolo False
         azure_credential=azd_credential,
         embedding_endpoint=embedding_endpoint
     )

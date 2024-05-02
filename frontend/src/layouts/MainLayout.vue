@@ -7,35 +7,41 @@
           ChatGPT RAG chat
         </q-toolbar-title>
 
-        <q-toggle
-        class="chatdata-toggle"
-        v-model="chat_with_data"
-        label="Chat with own data">
-          <q-tooltip class="tooltip">
-            Toggle between chatting with own data and without, default is own data enabled
-            </q-tooltip>
-        </q-toggle>
+        <q-btn class="settings-button" label="Settings" icon="settings"> 
+          <q-popup-proxy class="settings-menu"> 
+            <q-card>
 
-        <q-btn-dropdown
-          auto-close
-          v-model:label=selected_type
-          class="search-type-button">
-           
-          <q-list>
+            <q-card-section> 
+              <span><b>Retriever settings</b></span><hr>
 
-            <q-item clickable v-close-popup v-for="item in search_types" :key="item.label" @click="selectSearchType(item.label)">
-              <q-item-section>
-                {{ item.label }}
-              </q-item-section>
-            </q-item>
+              <q-input outlined rounded label="Top n documents retrieved" v-model.number="top_n_docs" type="number" /><br>
+              <q-input outlined rounded label="Strictness" v-model.number="strictness" type="number" /><br>
 
-          </q-list>
+              <span>Index search type:</span><br>
+              <q-radio v-model="search_type" val="Fulltext" label="Fulltext" />
+              <q-radio v-model="search_type" val="Vector" label="Vector" />
+              <q-radio v-model="search_type" val="Hybrid" label="Hybrid" /><br>
 
-          <q-tooltip class="tooltip">
-              Types of search for data retrieval
-          </q-tooltip>
+              <span>Chat with own data:</span><br>
+              <q-radio v-model="chat_with_data" val="true" label="Yes" />
+              <q-radio v-model="chat_with_data" val="false" label="No" />
 
-        </q-btn-dropdown>
+            </q-card-section>
+
+            <hr style="height:1px;border:none;color:#333;background-color:#333;">
+
+            <q-card-section>
+              <span><b>Generator settings</b></span><hr>
+
+              <q-input outlined rounded label="Temperature (values 0 - 2)" min="0" max="2" v-model.number="temperature" type="number"/><br>
+              <q-input outlined rounded label="Presence penalty (values -2 - 2)" min="-2" max="2" v-model.number="presence_penalty" type="number"/><br>
+              <q-input outlined rounded label="Frequence penalty (values -2 - 2)" min="-2" max="2" v-model.number="frequence_penalty" type="number"/>
+
+            </q-card-section>
+
+            </q-card>
+          </q-popup-proxy>
+        </q-btn>
 
       </q-toolbar>
     </q-header>
@@ -55,13 +61,13 @@ export default defineComponent({
 
   data () {
     return {
-      search_types: [
-        {label: 'Fulltext'},
-        {label: 'Vector'},
-        {label: 'Hybrid'}
-      ],
-      selected_type: 'Fulltext',
-      chat_with_data: true,
+      search_type: 'Fulltext',
+      chat_with_data: 'true',
+      top_n_docs: 5,
+      strictness: 3,
+      temperature: 1,
+      presence_penalty: 0,
+      frequence_penalty: 0,
     }
   },
 
@@ -69,16 +75,18 @@ export default defineComponent({
     const store = useChatStore();
 
     watch(() => this.chat_with_data, (newValue) => {
-      store.changeChatWithData(newValue)
-    })
-  },
+      switch (newValue) {
+        case 'true':
+          store.changeChatWithData(true)
+          break;
+        case 'false':
+          store.changeChatWithData(false)
+          break;
+      }
+    });
 
-  methods: {
-    selectSearchType (selection: string) {
-      this.selected_type = selection;
-      const store = useChatStore();
-
-      switch (this.selected_type) {
+    watch(() => this.search_type, (newValue) => {
+      switch (newValue) {
         case 'Fulltext':
           store.changeType('simple');
           break;
@@ -89,33 +97,45 @@ export default defineComponent({
           store.changeType('vector_simple_hybrid');
           break;
       }
-    }
-  }
+    });
+
+    watch(() => this.top_n_docs, (newValue) => {
+      if (typeof(newValue) === 'string') {newValue = 5; this.top_n_docs = 5}
+      store.changeTopNDocs(newValue);
+    });
+
+    watch(() => this.strictness, (newValue) => {
+      if (typeof(newValue) === 'string') {newValue = 3; this.strictness = 3}
+      store.changeStrictness(newValue);
+    });
+
+    watch(() => this.temperature, (newValue) => {
+      if (typeof(newValue) === 'string' || (newValue < 0 || newValue > 2)) {newValue = 1; this.temperature = 1}
+      store.changeTemperature(newValue);
+    });
+
+    watch(() => this.presence_penalty, (newValue) => {
+      if (typeof(newValue) === 'string' || (newValue < -2 || newValue > 2)) {newValue = 0; this.presence_penalty = 0}
+      store.changePresencePenalty(newValue);
+    });
+
+    watch(() => this.frequence_penalty, (newValue) => {
+      if (typeof(newValue) === 'string' || (newValue < -2 || newValue > 2)) {newValue = 0; this.frequence_penalty = 0}
+      store.changeFrequencePenalty(newValue);
+    });
+  },
 });
 </script>
 
 <style>
-.chatdata-toggle {
-  margin-right: 3%;
-  font-size: 17px;
-}
-
-.q-toggle__thumb {
-  color:#34597e;
-}
-
-.q-toggle__track {
-  color:#34597e;
-}
-
-.search-type-button {
+.settings-button {
+  margin-right: 1%;
   width: 150px;
-  max-width: 150px;
-  min-width: 150px;
   background-color: #34597e;
 }
 
-.tooltip {
-  background-color: #34597e;
+.settings-menu {
+  width: 20%;
+  height: 70.1%;
 }
 </style>

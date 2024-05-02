@@ -440,8 +440,8 @@ def merge_chunks_serially(chunked_content_list: List[str], num_tokens: int) -> G
         yield current_chunk, total_size
 
 
-def get_embedding(text): #upravene na AzureOpenAI API verziu 2024-02-01    
-    try:  
+def get_embedding(text): #KUBO pridane #upravene na AzureOpenAI API verziu 2024-02-01    
+    try: 
         client = AzureOpenAI(
             api_key = os.getenv("AZURE_OPENAI_API_KEY"), 
             api_version=os.getenv("API_VERSION"),

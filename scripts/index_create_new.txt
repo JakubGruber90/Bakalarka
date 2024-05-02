@@ -1,0 +1,1 @@
+python scripts/prepdocs.py --searchservice aivyhladavanie --index index2 --searchkey ec0r1Qz2HYQ1YOnlvugDbGjxvZj6jMt1QzLqqIHBhdAzSeAUVEe4 --formrecognizerservice dokumentovainteligencia --formrecognizerkey 8fe7ccb511994f2eb8cc4bdc0d6655f0 --embeddingendpoint text-embedding-ada-002
