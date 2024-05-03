@@ -1,4 +1,5 @@
 import os
+import pandas
 
 from langchain_openai.chat_models import AzureChatOpenAI
 from langchain_openai.embeddings import AzureOpenAIEmbeddings
@@ -65,7 +66,8 @@ result = evaluate(
     ]
 )
 
-print(result) 
+df = result.to_pandas()
+print(df.head())
 
 #Takyto je output:
 # {'faithfulness': 1.0000, 'answer_relevancy': 0.9876, 'context_recall': 0.5000, 'context_precision': 1.0000}

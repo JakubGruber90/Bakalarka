@@ -4,38 +4,38 @@
       <q-toolbar>
 
         <q-toolbar-title>
-          ChatGPT RAG chat
+          ChatGPT RAG čet
         </q-toolbar-title>
 
-        <q-btn class="settings-button" label="Settings" icon="settings"> 
+        <q-btn class="settings-button" label="Nastavenia" icon="settings"> 
           <q-popup-proxy class="settings-menu"> 
             <q-card>
 
             <q-card-section> 
-              <span><b>Retriever settings</b></span><hr>
+              <span><b>Nastavenia vyhľadávania</b></span><hr>
 
-              <q-input outlined rounded label="Top n documents retrieved" v-model.number="top_n_docs" type="number" /><br>
-              <q-input outlined rounded label="Strictness" v-model.number="strictness" type="number" /><br>
+              <q-input outlined rounded label="Top n vrátených dokumentov" v-model.number="top_n_docs" type="number" /><br>
+              <q-input outlined rounded label="Striktnosť" v-model.number="strictness" type="number" /><br>
 
-              <span>Index search type:</span><br>
-              <q-radio v-model="search_type" val="Fulltext" label="Fulltext" />
-              <q-radio v-model="search_type" val="Vector" label="Vector" />
-              <q-radio v-model="search_type" val="Hybrid" label="Hybrid" /><br>
+              <span>Typ vyhľadávania v indexe:</span><br>
+              <q-radio v-model="search_type" val="Fulltext" label="Plnotextové" />
+              <q-radio v-model="search_type" val="Vector" label="Vektorové" />
+              <q-radio v-model="search_type" val="Hybrid" label="Hybridné" /><br>
 
-              <span>Chat with own data:</span><br>
-              <q-radio v-model="chat_with_data" val="true" label="Yes" />
-              <q-radio v-model="chat_with_data" val="false" label="No" />
+              <span>Četovať s vlasnými dátami:</span><br>
+              <q-radio v-model="chat_with_data" val="true" label="Áno" />
+              <q-radio v-model="chat_with_data" val="false" label="Nie" />
 
             </q-card-section>
 
             <hr style="height:1px;border:none;color:#333;background-color:#333;">
 
             <q-card-section>
-              <span><b>Generator settings</b></span><hr>
+              <span><b>Nastavenia generovania</b></span><hr>
 
-              <q-input outlined rounded label="Temperature (values 0 - 2)" min="0" max="2" v-model.number="temperature" type="number"/><br>
-              <q-input outlined rounded label="Presence penalty (values -2 - 2)" min="-2" max="2" v-model.number="presence_penalty" type="number"/><br>
-              <q-input outlined rounded label="Frequence penalty (values -2 - 2)" min="-2" max="2" v-model.number="frequence_penalty" type="number"/>
+              <q-input outlined rounded label="Teplota (hodnoty 0 - 2)" min="0" max="2" v-model.number="temperature" type="number"/><br>
+              <q-input outlined rounded label="Prítomnostná penalizácia (hodnoty -2 - 2)" min="-2" max="2" v-model.number="presence_penalty" type="number"/><br>
+              <q-input outlined rounded label="Frekvenčná penalizácia (hodnoty -2 - 2)" min="-2" max="2" v-model.number="frequence_penalty" type="number"/>
 
             </q-card-section>
 
@@ -130,7 +130,6 @@ export default defineComponent({
 <style>
 .settings-button {
   margin-right: 1%;
-  width: 150px;
   background-color: #34597e;
 }
 

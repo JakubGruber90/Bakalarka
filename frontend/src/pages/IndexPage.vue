@@ -1,14 +1,19 @@
 <template>
   <q-page class="column items-center justify-evenly">
 
+    <div v-if="!messages_present" class="no-messages">Nemáte žiadne správy. Skúste sa niečo opýtať.</div>
     <div class="message-container" ref="message_container"></div>
 
-    <div class="input-container">
-      <textarea class="user-input" ref="user_input" placeholder="Type here..." required autofocus v-model="messageText" @keypress.enter.prevent="sendMessage">
-      </textarea>
-      <q-btn class="send-button" round icon="send" @click="sendMessage" />
+    <div class="input-evaluate-container">
+      <div class="input-container">
+        <textarea class="user-input" ref="user_input" placeholder="Sem píšte..." required autofocus v-model="messageText" @keypress.enter.prevent="sendMessage">
+        </textarea>
+        <q-btn class="send-button" round icon="send" @click="sendMessage" />
+      </div>
+
+      <q-btn class="evaluate-button" label="Vyhodnotiť odpovede" @click="ragasEvaluate()"/>
     </div>
-  
+
     <q-drawer 
         class="citation-area"
         v-model="citationsOpen"
@@ -44,6 +49,8 @@ export default defineComponent({
 
   methods: {
     async sendMessage() {
+      this.messages_present = true;
+
       if (this.messageText === '') {
         return;
       }
@@ -169,6 +176,10 @@ export default defineComponent({
       this.citationsOpen = true;
       this.citationHeading = (event.target as HTMLElement).getAttribute('data-heading') || '';
       this.citationContent = (event.target as HTMLElement).getAttribute('data-content') || ''; 
+    },
+
+    ragasEvaluate() {
+      console.log('WOHOO')
     }
   },
 
@@ -178,6 +189,7 @@ export default defineComponent({
       citationsOpen: false,
       citationHeading: '',
       citationContent: '',
+      messages_present: false
     };
   }
 });
@@ -187,6 +199,11 @@ export default defineComponent({
 .body {
   display: flex;
   flex-direction: column;
+}
+
+.no-messages {
+  font-size: 20px;
+  color: #627b94;
 }
 
 .citation-area {
@@ -220,9 +237,15 @@ export default defineComponent({
   align-self: flex-end;
 }
 
-.input-container {
+.input-evaluate-container {
   position: fixed;
   bottom: 0;
+  margin-bottom: 1%;
+  display: flex;
+  flex-direction: row;
+}
+
+.input-container {
   width: 1200px;
   max-width: 100%;
   max-height: 25vh;
@@ -233,7 +256,6 @@ export default defineComponent({
   resize: none;
   height: 125px;
   max-height: 180px;
-  margin-bottom: 10px;
   border-radius: 10px;
   padding: 10px;
   outline: none;
@@ -254,10 +276,17 @@ export default defineComponent({
 .send-button {
   margin: 5px;
   position: absolute;
-  bottom: 17%;
-  right: 10px;
+  bottom: 15%;
+  right: 15%;
   height: 12%;
   background-color: #91b6dc;
+}
+
+.evaluate-button {
+  margin-left: 1%;
+  margin-top: 2%;
+  background-color: #91b6dc;
+  height: 70%;
 }
 
 .message-container {
