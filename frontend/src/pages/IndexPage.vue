@@ -20,8 +20,8 @@
         :width="300"
         bordered> 
         <q-btn class="citation-close" icon="close" fab-mini @click="citationsOpen = ! citationsOpen" />
-      <span style="font-size: 22px;"> Source: </span>
-      <span style="font-size: 28px;"> {{ citationHeading }} </span>
+      <span style="font-size: 22px;"> Zdroj: </span>
+      <span style="font-size: 28px;"> {{ citationHeading }} </span><br>
       <span> {{ citationContent }} </span>
     </q-drawer>
 
@@ -126,6 +126,12 @@ export default defineComponent({
           });
         }
 
+        this.currentAnswer = botMessageContent.innerHTML; //priprava udajov pre testovanie RAGAS na backende
+        this.currentContexts = []
+        citations.forEach(citation => {
+          this.currentContexts.push(citation.content);
+        })
+
         if (store.getMessages.length > 10) {
           store.deleteMessage();
           store.deleteMessage();
@@ -178,9 +184,48 @@ export default defineComponent({
       this.citationContent = (event.target as HTMLElement).getAttribute('data-content') || ''; 
     },
 
-    ragasEvaluate() {
-      console.log('WOHOO')
-    }
+    async ragasEvaluate() {
+      try {
+        const response = await fetch('http://127.0.0.1:5000/ragas-test', {
+          method: 'GET',
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch questions from the backend');
+        }
+
+        const responseData = await response.json(); 
+
+        if (!Array.isArray(responseData.questions)) {
+          throw new Error('Questions data is not an array');
+        }
+
+        const questions: string[] = responseData.questions;
+
+        for (const question of questions) {
+          this.messageText = question;
+          await this.sendMessage(); 
+
+          const postResponse = await fetch('http://127.0.0.1:5000/ragas-test', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ 
+              question: question,
+              answer: this.currentAnswer,
+              contexts: this.currentContexts,
+            }),
+          });
+
+          if (!postResponse.ok) {
+            throw new Error('Failed to send data to the backend');
+          }
+        }
+      } catch (error) {
+        console.log(error);
+      }
+    },
   },
 
   data () {
@@ -189,7 +234,9 @@ export default defineComponent({
       citationsOpen: false,
       citationHeading: '',
       citationContent: '',
-      messages_present: false
+      messages_present: false,
+      currentAnswer: '',
+      currentContexts: [] as string []
     };
   }
 });

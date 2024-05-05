@@ -1,14 +1,36 @@
 import openai
 import os
 import json
+from tenacity import retry, wait_random_exponential, stop_after_attempt, retry_if_exception_type
 from flask import Flask, Response, request, jsonify, stream_with_context
+from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
 from flask_cors import CORS
 from dotenv import load_dotenv
-
-app = Flask(__name__)
-CORS(app)
+from langchain_openai.chat_models import AzureChatOpenAI
+from langchain_openai.embeddings import AzureOpenAIEmbeddings
+from ragas.metrics import (
+    context_precision,
+    context_recall,
+    answer_relevancy,
+    faithfulness,
+)
+from ragas import evaluate
+from datasets import Dataset
 
 load_dotenv()
+
+#premenne na pristup do openai api
+openai_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+openai_api_key = os.getenv("AZURE_OPENAI_API_KEY")
+openai_model_name = os.getenv("AZURE_OPENAI_MODEL_NAME")
+openai_api_version = os.getenv("API_VERSION")
+openai_embbed_model = os.getenv("AZURE_OPENAI_EMBEDDING_MODEL_NAME")
+
+#premenne na pristup do azure ai search
+search_endpoint = os.getenv("AZURE_AI_SEARCH_ENDPOINT"),
+search_key = os.getenv("AZURE_AI_SEARCH_API_KEY")
+search_index = os.getenv("AZURE_AI_SEARCH_INDEX"),
 
 bot_system_message = '''You are a helpful assistant that answers questions. Here are some rules for you to follow: 
 1. Always answer in the Slovak language. 
@@ -16,22 +38,52 @@ bot_system_message = '''You are a helpful assistant that answers questions. Here
 3. Do not use english language except when it is neccessary like when explaining code or when there are english words in your input data. 
 ''' #sprava pre model, ako sa ma spravat
 
-#premenne na pristup do openai api
-openai_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-openai_api_key = os.getenv("AZURE_OPENAI_API_KEY")
-openai_model_name = os.getenv("AZURE_OPENAI_MODEL_NAME") #nazyvane aj deployment id
-openai_api_version = os.getenv("API_VERSION")
-
-#premenne na pristup do azure ai search
-search_endpoint = os.getenv("AZURE_AI_SEARCH_ENDPOINT"),
-search_key = os.getenv("AZURE_AI_SEARCH_API_KEY")
-search_index = os.getenv("AZURE_AI_SEARCH_INDEX"), # index1 nema vektory | index2 ma vektory
-
-client = openai.AzureOpenAI(
+client = openai.AzureOpenAI( #pripojenie na Azure OpenAI endpoint pre vykonavanie API calls na generovanie odpovedi v chate
     azure_endpoint=openai_endpoint,
     api_key=openai_api_key,
     api_version=openai_api_version
 )
+
+language_model = AzureChatOpenAI( #zadefinovanie, aky language model ma RAGAS pouzit
+    openai_api_version= openai_api_version,
+    azure_endpoint= openai_endpoint,
+    model=openai_model_name,
+    validate_base_url=False,
+)
+
+embbed_model = AzureOpenAIEmbeddings( #zadefinovanie, aky embedding model ma RAGAS pouzit
+    openai_api_version=openai_api_version,
+    azure_endpoint=openai_endpoint,
+    model=openai_embbed_model,
+)
+
+app = Flask(__name__)
+
+CORS(app)
+
+db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'database', 'ragas_test_database.db'))
+app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
+
+db = SQLAlchemy(app)
+migrate = Migrate(app, db)
+
+class Questions(db.Model):
+    __tablename__ = 'questions'
+    id = db.Column(db.Integer, primary_key=True)
+    text = db.Column(db.Text)
+    answer = db.Column(db.Text)
+    contexts = db.relationship('Contexts', backref='questions')
+    ground_truth = db.Column(db.Text)
+    faithfulness = db.Column(db.Integer)
+    answer_relevancy = db.Column(db.Integer)
+    context_recall = db.Column(db.Integer)
+    context_precision = db.Column(db.Integer)
+
+class Contexts(db.Model):
+    __tablename__ = 'contexts'
+    id = db.Column(db.Integer, primary_key=True)
+    text = db.Column(db.Text)
+    question_id = db.Column(db.Integer, db.ForeignKey("questions.id"))
 
 @app.route('/')
 def index():
@@ -130,9 +182,67 @@ def send_message():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     
-@app.route('/ragas-test', methods=['POST'])
+@app.route('/ragas-test', methods=['GET', 'POST'])
 def ragas_test():
-    pass
+    if request.method == 'GET':
+        try:
+            questions_rows = db.session.query(Questions.text).all()
+            questions_text = [row.text for row in questions_rows]
+        except Exception as e:
+            print('Error getting questions from DB: ', e)
+        
+        return jsonify({'questions': questions_text})
+    
+    if request.method == 'POST':
+        try:
+            @retry(wait=wait_random_exponential(multiplier=1, max=60), stop=stop_after_attempt(6), retry=retry_if_exception_type(openai.RateLimitError))
+            def save_data_to_db():
+                question_text = request.json.get('question')
+                question = db.session.query(Questions).filter(Questions.text == question_text).first()
+                
+                answer = request.json.get('answer')
+                contexts = request.json.get('contexts')
+                ground_truth = question.ground_truth
+                            
+                data_samples = {
+                    'question': [question_text],
+                    'answer': [answer],
+                    'contexts': [contexts], 
+                    'ground_truth': [ground_truth]
+                }
+                
+                dataset = Dataset.from_dict(data_samples)
+                result = evaluate(
+                    dataset,
+                    llm= language_model,
+                    embeddings= embbed_model,
+                    metrics = [
+                        faithfulness,
+                        answer_relevancy,
+                        context_recall,
+                        context_precision,
+                    ]
+                )
+                
+                question.answer = answer
+                question.faithfulness = result['faithfulness']
+                question.answer_relevancy = result['answer_relevancy']
+                question.context_recall = result['context_recall']
+                question.context_precision = result['context_precision']
+                
+                contexts_json = json.dumps(contexts)
+                new_context = Contexts(text=contexts_json, question_id=question.id)
+                db.session.add(new_context)
+                
+                db.session.commit()
+            
+            save_data_to_db()
+            
+            return jsonify({'success': True})
+        
+        except Exception as e:
+            db.session.rollback()
+            print('Error saving data to DB: ', e)
         
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port='5000', debug=True)

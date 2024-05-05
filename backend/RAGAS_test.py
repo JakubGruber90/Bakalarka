@@ -1,5 +1,4 @@
 import os
-import pandas
 
 from langchain_openai.chat_models import AzureChatOpenAI
 from langchain_openai.embeddings import AzureOpenAIEmbeddings
@@ -10,7 +9,7 @@ from ragas.metrics import (
     context_precision,
     context_recall,
     answer_relevancy,
-    faithfulness, #rozbije otazku na podotazky a kontoroluje, ci sa odpoved na ne nachadza v kontexte
+    faithfulness,
 )
 from ragas import evaluate
 from datasets import Dataset
