@@ -1,7 +1,7 @@
 <template>
   <q-page class="column items-center justify-evenly">
 
-    <div v-if="!messages_present" class="no-messages">Nemáte žiadne správy. Skúste sa niečo opýtať.</div>
+    <div v-if="!messagesPresent" class="no-messages">Nemáte žiadne správy. Skúste sa niečo opýtať.</div>
     <div class="message-container" ref="message_container"></div>
 
     <div class="input-evaluate-container">
@@ -11,7 +11,25 @@
         <q-btn class="send-button" round icon="send" @click="sendMessage" />
       </div>
 
-      <q-btn class="evaluate-button" label="Vyhodnotiť odpovede" @click="ragasEvaluate()"/>
+      <q-btn class="evaluate-button" label="Vyhodnotiť odpovede" @click="openTestDialog()">
+        <q-dialog v-model="testDialog">
+          <q-card class="evaluate-cards">
+            
+            <span style="font-size: 25px;">Odpovede budú testované na týchto otázkach:</span><hr>
+            <div style="display: flex; justify-content: center; font-size: 20px; margin: 30px"><span v-if="questions.length === 0">V databáze nie sú žiadne otázky</span></div>
+            <q-card-section v-for="(question, index) in questions" :key="index">
+              {{ index+1 }}.) {{ question }}
+            </q-card-section>
+
+            <q-card-actions align="around">
+              <q-btn class="test-button" @click="testDialog = false" label="Zrušiť" />
+              <q-btn class="test-button" @click="editQuestions = true; testDialog = false" label="Upraviť otázky"/>
+              <q-btn class="test-button" @click="ragasEvaluate()" label="Pokračovať" />
+            </q-card-actions>
+
+          </q-card>
+        </q-dialog>
+      </q-btn>      
     </div>
 
     <q-drawer 
@@ -24,6 +42,35 @@
       <span style="font-size: 28px;"> {{ citationHeading }} </span><br>
       <span> {{ citationContent }} </span>
     </q-drawer>
+    
+    <q-dialog v-model="editQuestions">
+      <q-card class="evaluate-cards">
+
+        <q-card-actions align="center" vertical>
+          <span style="font-size: 20px;">Pridať otázku so správnou odpoveďou do testovacieho datasetu:</span>
+          <q-input outlined rounded style="width: 100%;" v-model="questionToAdd" label="Otázka"></q-input><br>
+          <q-input outlined rounded style="width: 100%;" v-model="groundTruthToAdd" label="Správna Odpoveď"></q-input><br>
+          <q-btn class="test-button" @click="addQuestion()" label="Pridať"/>
+        </q-card-actions><hr>
+
+        <div style="display: flex; justify-content: center; font-size: 20px; margin: 30px"><span v-if="questions.length === 0">V databáze nie sú žiadne otázky</span></div>
+        <q-card-section v-for="(question, index) in questions" :key="index">
+          <div style="margin: 1%">{{ index+1 }}.) {{ question }} <q-btn fab-mini class="del-question-button" icon="delete" @click="deleteQuestion(question)" /></div><br><hr>
+        </q-card-section>
+
+        <q-card-actions align="center">
+          <q-btn class="test-button" @click="testDialog = true; editQuestions = false" label="Späť" /><br>
+        </q-card-actions>
+
+      </q-card>
+    </q-dialog>
+
+    <q-dialog persistent class="error-dialog" v-model="errDialog">
+      <q-card>
+        <q-card-section><Span>{{ errDialogMessage }}</Span></q-card-section>
+        <q-card-actions align="center"><q-btn style="background-color: #91b6dc;" label="OK" @click="errDialog = false; errDialogMessage = ''" /></q-card-actions>
+      </q-card>
+    </q-dialog>
 
   </q-page>
 </template>
@@ -49,7 +96,7 @@ export default defineComponent({
 
   methods: {
     async sendMessage() {
-      this.messages_present = true;
+      this.messagesPresent = true;
 
       if (this.messageText === '') {
         return;
@@ -186,7 +233,7 @@ export default defineComponent({
 
     async ragasEvaluate() {
       try {
-        const response = await fetch('http://127.0.0.1:5000/ragas-test', {
+        const response = await fetch('http://127.0.0.1:5000/get-questions', {
           method: 'GET',
         });
 
@@ -201,6 +248,12 @@ export default defineComponent({
         }
 
         const questions: string[] = responseData.questions;
+
+        if (questions.length === 0) { //ak v databaze nie su ziadne otazky, tak testovanie neprebehne
+          this.errDialogMessage = 'V databáze nie sú žiadne otázky, ktoré by sa dali testovať. Najprv do nej pridajte otázky.';
+          this.errDialog = true;
+          return
+        }
 
         for (const question of questions) {
           this.messageText = question;
@@ -226,6 +279,98 @@ export default defineComponent({
         console.log(error);
       }
     },
+
+    async openTestDialog() {
+      try {
+        const response = await fetch('http://127.0.0.1:5000/get-questions', {
+          method: 'GET',
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch questions from the backend');
+        }
+
+        const responseData = await response.json();
+        this.questions = responseData.questions;
+
+        this.testDialog = true;
+      } catch (error) {
+        console.log(error);
+      }
+    },
+
+    async addQuestion() {
+      if (this.questionToAdd.trim().length === 0 || this.groundTruthToAdd.trim().length === 0) {
+        this.errDialogMessage = 'Pole pre otázku alebo odpoveď je prázdne. Pre pridanie musíte zadať oboje.'
+        this.errDialog = true
+        return;
+      }
+      
+      try {
+        const responseAdd = await fetch('http://127.0.0.1:5000/add-question', { //volanie endpointu na pridanie otazky do DB
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ 
+              question: this.questionToAdd,
+              ground_truth: this.groundTruthToAdd,
+            }),
+        })
+
+        if (!responseAdd.ok) {
+          throw new Error('Failed to add question to DB');
+        }
+
+        const responseGet = await fetch('http://127.0.0.1:5000/get-questions', { //ziskanie otazok z DB, aby sa aktualizoval ich zoznam v UI
+          method: 'GET'
+        })
+
+        if (!responseGet.ok) {
+          throw new Error('Failed to fetch questions');
+        }
+
+        const responseData = await responseGet.json();
+        this.questions = responseData.questions;        
+
+      } catch (error) {
+        console.log(error)
+      }
+
+      this.questionToAdd = '';
+      this.groundTruthToAdd = '';
+    },
+
+    async deleteQuestion(question: string) {
+      try {
+        const responseDel = await fetch('http://127.0.0.1:5000/del-question', { //volanie endpointu na odstranenie otazky z DB
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ 
+              question: question,
+            }),
+        })
+
+        if (!responseDel.ok) {
+          throw new Error('Failed to delete question from DB');
+        }
+
+        const responseGet = await fetch('http://127.0.0.1:5000/get-questions', { //ziskanie otazok z DB, aby sa aktualizoval ich zoznam v UI
+          method: 'GET'
+        })
+
+        if (!responseGet.ok) {
+          throw new Error('Failed to fetch questions');
+        }
+
+        const responseData = await responseGet.json();
+        this.questions = responseData.questions;  
+      } catch (error) {
+        console.log(error)
+      }
+    },
   },
 
   data () {
@@ -234,9 +379,16 @@ export default defineComponent({
       citationsOpen: false,
       citationHeading: '',
       citationContent: '',
-      messages_present: false,
+      messagesPresent: false,
       currentAnswer: '',
-      currentContexts: [] as string []
+      currentContexts: [] as string [],
+      testDialog: false,
+      questions: '',
+      editQuestions: false,
+      questionToAdd: '',
+      groundTruthToAdd: '',
+      errDialog: false,
+      errDialogMessage: '',
     };
   }
 });
@@ -246,6 +398,25 @@ export default defineComponent({
 .body {
   display: flex;
   flex-direction: column;
+}
+
+.evaluate-cards {
+  overflow-y: auto;
+  padding: 10px;
+  min-width: 80vw;
+  max-width: 90vw;
+  max-height: 80vh;
+}
+
+.del-question-button {
+  position: absolute;
+  right: 0;
+  background-color: #91b6dc;
+}
+
+.test-button {
+  width: 30%;
+  background-color: #91b6dc;
 }
 
 .no-messages {

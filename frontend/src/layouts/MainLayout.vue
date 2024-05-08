@@ -7,7 +7,23 @@
           ChatGPT RAG čet
         </q-toolbar-title>
 
-        <q-btn class="settings-button" label="Nastavenia" icon="settings"> 
+        <q-btn class="layout-button" label="Výsledky testovania odpovedí" @click="resultDialog = true">
+          <q-dialog v-model="resultDialog" maximized>
+            <q-card>
+
+              <q-card-actions>
+                <q-btn icon="close" fab-mini @click="resultDialog = false" />
+              </q-card-actions>
+
+              <q-card-section>
+                TU BUDU VYSLEDKY TESTOVANIA V JEDNOTLIVYCH STLPCOCH NACITAVANE CEZ ONLOAD PO CHUNKOCH
+              </q-card-section>
+
+            </q-card>
+          </q-dialog>
+        </q-btn>
+
+        <q-btn class="layout-button" label="Nastavenia" icon="settings"> 
           <q-popup-proxy class="settings-menu"> 
             <q-card>
 
@@ -68,6 +84,8 @@ export default defineComponent({
       temperature: 1,
       presence_penalty: 0,
       frequence_penalty: 0,
+      results: [],
+      resultDialog: false,
     }
   },
 
@@ -75,6 +93,8 @@ export default defineComponent({
     const store = useChatStore();
 
     watch(() => this.chat_with_data, (newValue) => {
+      store.deleteAllMessages();
+
       switch (newValue) {
         case 'true':
           store.changeChatWithData(true)
@@ -128,7 +148,8 @@ export default defineComponent({
 </script>
 
 <style>
-.settings-button {
+
+.layout-button {
   margin-right: 1%;
   background-color: #34597e;
 }

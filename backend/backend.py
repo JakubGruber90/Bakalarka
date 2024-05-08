@@ -181,68 +181,105 @@ def send_message():
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-    
-@app.route('/ragas-test', methods=['GET', 'POST'])
+
+@app.route('/ragas-test', methods=['POST'])
 def ragas_test():
-    if request.method == 'GET':
-        try:
-            questions_rows = db.session.query(Questions.text).all()
-            questions_text = [row.text for row in questions_rows]
-        except Exception as e:
-            print('Error getting questions from DB: ', e)
-        
-        return jsonify({'questions': questions_text})
-    
-    if request.method == 'POST':
-        try:
-            @retry(wait=wait_random_exponential(multiplier=1, max=60), stop=stop_after_attempt(6), retry=retry_if_exception_type(openai.RateLimitError))
-            def save_data_to_db():
-                question_text = request.json.get('question')
-                question = db.session.query(Questions).filter(Questions.text == question_text).first()
+    try:
+        @retry(wait=wait_random_exponential(multiplier=1, max=60), stop=stop_after_attempt(6), retry=retry_if_exception_type(openai.RateLimitError))
+        def save_data_to_db():
+            question_text = request.json.get('question')
+            question = db.session.query(Questions).filter(Questions.text == question_text).first()
                 
-                answer = request.json.get('answer')
-                contexts = request.json.get('contexts')
-                ground_truth = question.ground_truth
+            answer = request.json.get('answer')
+            contexts = request.json.get('contexts')
+            ground_truth = question.ground_truth
                             
-                data_samples = {
-                    'question': [question_text],
-                    'answer': [answer],
-                    'contexts': [contexts], 
-                    'ground_truth': [ground_truth]
-                }
+            data_samples = {
+                'question': [question_text],
+                'answer': [answer],
+                'contexts': [contexts], 
+                'ground_truth': [ground_truth]
+            }
                 
-                dataset = Dataset.from_dict(data_samples)
-                result = evaluate(
-                    dataset,
-                    llm= language_model,
-                    embeddings= embbed_model,
-                    metrics = [
-                        faithfulness,
-                        answer_relevancy,
-                        context_recall,
-                        context_precision,
-                    ]
-                )
+            dataset = Dataset.from_dict(data_samples)
+            result = evaluate(
+                dataset,
+                llm= language_model,
+                embeddings= embbed_model,
+                metrics = [
+                    faithfulness, #meria vecný súlad vygenerovanej odpovede s daným kontextom. Vygenerovaná odpoveď sa považuje za vernú, ak všetky tvrdenia, ktoré sú v odpovedi uvedené, možno odvodiť z daného kontextu. Na výpočet sa najprv identifikuje množina tvrdení z vygenerovanej odpovede. Potom sa každé z týchto tvrdení porovná s daným kontextom, aby sa určilo, či sa dá z daného kontextu odvodiť, alebo nie.
+                    answer_relevancy, #Metrika hodnotenia, Relevancia odpovede, sa zameriava na posúdenie toho, do akej miery je vygenerovaná odpoveď relevantná k danej otázke. Nižšie skóre sa prideľuje odpovediam, ktoré sú neúplné alebo obsahujú nadbytočné informácie, a vyššie skóre znamená lepšiu relevantnosť. Odpoveď sa považuje za relevantnú, ak priamo a vhodne reaguje na pôvodnú otázku. Dôležité je, že pri posudzovaní relevantnosti odpovede neberieme do úvahy fakticitu, ale penalizujeme prípady, keď odpoveď nie je úplná alebo obsahuje nadbytočné údaje. Na výpočet tohto skóre je LLM vyzvaný, aby viackrát vygeneroval vhodnú otázku pre vygenerovanú odpoveď, a meria sa priemerná kosínusová podobnosť medzi týmito vygenerovanými otázkami a pôvodnou otázkou. Základnou myšlienkou je, že ak vygenerovaná odpoveď presne odpovedá na pôvodnú otázku, LLM by mal byť schopný z odpovede vygenerovať otázky, ktoré sú v súlade s pôvodnou otázkou.
+                    context_recall, #Spätná väzba kontextu meria, do akej miery sa načítaný kontext zhoduje s anotovanou odpoveďou. Na odhad vyvolania kontextu zo základnej pravdivej odpovede sa každá veta v základnej pravdivej odpovedi analyzuje s cieľom určiť, či ju možno priradiť k vyhľadanému kontextu alebo nie. V ideálnom prípade by sa všetky vety v základnej pravdivej odpovedi mali priradiť k vyhľadanému kontextu.
+                    context_precision, #Presnosť kontextu je metrika, ktorá hodnotí, či sú všetky základné pravdivé relevantné položky prítomné v kontextoch zaradené vyššie alebo nie. V ideálnom prípade sa všetky relevantné časti musia objaviť na najvyšších priečkach.
+                ]
+            )
                 
-                question.answer = answer
-                question.faithfulness = result['faithfulness']
-                question.answer_relevancy = result['answer_relevancy']
-                question.context_recall = result['context_recall']
-                question.context_precision = result['context_precision']
+            question.answer = answer
+            question.faithfulness = result['faithfulness']
+            question.answer_relevancy = result['answer_relevancy']
+            question.context_recall = result['context_recall']
+            question.context_precision = result['context_precision']
                 
-                contexts_json = json.dumps(contexts)
-                new_context = Contexts(text=contexts_json, question_id=question.id)
-                db.session.add(new_context)
+            contexts_json = json.dumps(contexts)
+            new_context = Contexts(text=contexts_json, question_id=question.id)
+            db.session.add(new_context)
                 
-                db.session.commit()
+            db.session.commit()
             
-            save_data_to_db()
+        save_data_to_db()
             
-            return jsonify({'success': True})
+        return jsonify({'success': True})
         
-        except Exception as e:
-            db.session.rollback()
-            print('Error saving data to DB: ', e)
+    except Exception as e:
+        db.session.rollback()
+        print('Error saving data to DB: ', e)
+
+@app.route('/get-questions', methods=['GET'])
+def get_questions():
+    try:
+        questions_rows = db.session.query(Questions.text).all()
+        questions_text = [row.text for row in questions_rows]
+    except Exception as e:
+        print('Error getting questions from DB: ', e)
         
+    return jsonify({'questions': questions_text})
+
+@app.route('/add-question', methods=['POST'])
+def add_question():
+    try:
+        question_text = request.json.get('question')
+        ground_truth_text = request.json.get('ground_truth')
+        
+        question_to_add = Questions(text=question_text, ground_truth=ground_truth_text)
+        db.session.add(question_to_add)
+        
+        db.session.commit()
+        
+    except Exception as e:
+        db.session.rollback()
+        print('Error adding question to DB: ', e)
+    
+    return jsonify({'success': True})
+        
+@app.route('/del-question', methods=['POST'])
+def del_question():
+    try:
+        question_to_del_text = request.json.get('question')
+        question_to_del = db.session.query(Questions).filter(Questions.text == question_to_del_text).first()
+        contexts_to_del = db.session.query(Contexts).filter(Contexts.question_id == question_to_del.id).all()
+        
+        db.session.delete(question_to_del)
+        if contexts_to_del:
+            db.session.delete(contexts_to_del)
+        
+        db.session.commit()
+        
+    except Exception as e:
+        db.session.rollback()
+        print('Error deleting question from DB: ', e)
+    
+    return jsonify({'success': True})
+    
+            
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port='5000', debug=True)

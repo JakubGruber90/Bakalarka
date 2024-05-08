@@ -28,6 +28,10 @@ export const useChatStore = defineStore('chatStore', {
       this.messages.shift()
     },
 
+    deleteAllMessages() {
+      this.messages = [];
+    },
+
     changeChatWithData(newValue: boolean) {
       this.chat_with_data = newValue;
     },
