@@ -15,15 +15,21 @@
         <q-dialog v-model="testDialog">
           <q-card class="evaluate-cards">
             
-            <span style="font-size: 25px;">Odpovede budú testované na týchto otázkach:</span><hr>
-            <div style="display: flex; justify-content: center; font-size: 20px; margin: 30px"><span v-if="questions.length === 0">V databáze nie sú žiadne otázky</span></div>
-            <q-card-section v-for="(question, index) in questions" :key="index">
+            <span style="font-size: 25px;">Odpovede budú testované na týchto otázkach (Zobrazené sú len otázky, ktoré nie sú vyhodnotené a môžu byť testované):</span>
+
+            <hr style="height:1px;border:none;color:#333;background-color:#333;">
+
+            <div v-if="questionsToEval.length === 0" style="display: flex; justify-content: center; font-size: 20px; margin: 30px">
+              <span>V databáze nie sú žiadne otázky na testovanie</span>
+            </div>
+
+            <q-card-section v-else v-for="(question, index) in questionsToEval" :key="index">
               {{ index+1 }}.) {{ question }}
             </q-card-section>
 
             <q-card-actions align="around">
               <q-btn class="test-button" @click="testDialog = false" label="Zrušiť" />
-              <q-btn class="test-button" @click="editQuestions = true; testDialog = false" label="Upraviť otázky"/>
+              <q-btn class="test-button" @click="openEditQuestions()" label="Upraviť otázky"/>
               <q-btn class="test-button" @click="ragasEvaluate()" label="Pokračovať" />
             </q-card-actions>
 
@@ -36,36 +42,46 @@
         class="citation-area"
         v-model="citationsOpen"
         :width="300"
-        bordered> 
+        bordered> <!--Drawer na zobrazovanie citacii k odpovediam-->
         <q-btn class="citation-close" icon="close" fab-mini @click="citationsOpen = ! citationsOpen" />
       <span style="font-size: 22px;"> Zdroj: </span>
       <span style="font-size: 28px;"> {{ citationHeading }} </span><br>
       <span> {{ citationContent }} </span>
     </q-drawer>
     
-    <q-dialog v-model="editQuestions">
+    <q-dialog v-model="editQuestions"> <!--Dialog, ktory sluzi na upravu otazok v DB-->
       <q-card class="evaluate-cards">
 
         <q-card-actions align="center" vertical>
-          <span style="font-size: 20px;">Pridať otázku so správnou odpoveďou do testovacieho datasetu:</span>
-          <q-input outlined rounded style="width: 100%;" v-model="questionToAdd" label="Otázka"></q-input><br>
-          <q-input outlined rounded style="width: 100%;" v-model="groundTruthToAdd" label="Správna Odpoveď"></q-input><br>
+          <span style="font-size: 20px;">Pridať otázku so správnou odpoveďou do testovacieho datasetu (musíte dodržať požadovaný formát z príkladu):</span>
+          <q-input autogrow standout="bg-grey-4" class="add-questions-texarea" v-model="questionsToAdd" 
+            placeholder=
+          "Príklad:
+          Koľko je 2+2 | 2+2 je 4
+          Akej farby je banán | banán je žltý 
+          ..." />
           <q-btn class="test-button" @click="addQuestion()" label="Pridať"/>
-        </q-card-actions><hr>
+        </q-card-actions> 
 
-        <div style="display: flex; justify-content: center; font-size: 20px; margin: 30px"><span v-if="questions.length === 0">V databáze nie sú žiadne otázky</span></div>
-        <q-card-section v-for="(question, index) in questions" :key="index">
-          <div style="margin: 1%">{{ index+1 }}.) {{ question }} <q-btn fab-mini class="del-question-button" icon="delete" @click="deleteQuestion(question)" /></div><br><hr>
+        <hr style="height:1px;border:none;color:#333;background-color:#333;">
+
+        <span style="font-size: 20px;">Otázky v databáze (aj vyhodnotené):</span>
+        <div v-if="questionsAll.length === 0" style="display: flex; justify-content: center; font-size: 20px; margin: 30px">
+          <span>V databáze nie sú žiadne otázky</span>
+        </div>
+
+        <q-card-section v-else v-for="(question, index) in questionsAll" :key="index">
+          <div style="margin: 1%">{{ index+1 }}.) {{ question.text }} <span v-if="question.eval"><b>[VYHODNOTENÁ]</b></span> <q-btn fab-mini class="del-question-button" icon="delete" @click="deleteQuestion(question.text)" /></div><br><hr>
         </q-card-section>
 
         <q-card-actions align="center">
-          <q-btn class="test-button" @click="testDialog = true; editQuestions = false" label="Späť" /><br>
+          <q-btn class="test-button" @click="backToEvaluate()" label="Späť" /><br>
         </q-card-actions>
 
       </q-card>
     </q-dialog>
 
-    <q-dialog persistent class="error-dialog" v-model="errDialog">
+    <q-dialog persistent class="error-dialog" v-model="errDialog"> <!--Dialog na zobrazovanie chyb-->
       <q-card>
         <q-card-section><Span>{{ errDialogMessage }}</Span></q-card-section>
         <q-card-actions align="center"><q-btn style="background-color: #91b6dc;" label="OK" @click="errDialog = false; errDialogMessage = ''" /></q-card-actions>
@@ -78,7 +94,7 @@
 <script lang="ts">
 import { defineComponent } from 'vue';
 import { useChatStore} from 'stores/app_states';
-import { Message, Citation } from 'src/components/models';
+import { Message, Citation, Question } from 'src/components/models';
 
 export default defineComponent({
   name: 'IndexPage',
@@ -233,29 +249,13 @@ export default defineComponent({
 
     async ragasEvaluate() {
       try {
-        const response = await fetch('http://127.0.0.1:5000/get-questions', {
-          method: 'GET',
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to fetch questions from the backend');
-        }
-
-        const responseData = await response.json(); 
-
-        if (!Array.isArray(responseData.questions)) {
-          throw new Error('Questions data is not an array');
-        }
-
-        const questions: string[] = responseData.questions;
-
-        if (questions.length === 0) { //ak v databaze nie su ziadne otazky, tak testovanie neprebehne
+        if (this.questionsToEval.length === 0) { //ak v databaze nie su otazky, ktore by sa dali testovat, tak testovanie neprebehne
           this.errDialogMessage = 'V databáze nie sú žiadne otázky, ktoré by sa dali testovať. Najprv do nej pridajte otázky.';
           this.errDialog = true;
           return
         }
 
-        for (const question of questions) {
+        for (const question of this.questionsToEval) {
           this.messageText = question;
           await this.sendMessage(); 
 
@@ -282,7 +282,7 @@ export default defineComponent({
 
     async openTestDialog() {
       try {
-        const response = await fetch('http://127.0.0.1:5000/get-questions', {
+        const response = await fetch('http://127.0.0.1:5000/get-unevaluated-questions', {
           method: 'GET',
         })
 
@@ -291,7 +291,7 @@ export default defineComponent({
         }
 
         const responseData = await response.json();
-        this.questions = responseData.questions;
+        this.questionsToEval = responseData.questions;
 
         this.testDialog = true;
       } catch (error) {
@@ -300,29 +300,32 @@ export default defineComponent({
     },
 
     async addQuestion() {
-      if (this.questionToAdd.trim().length === 0 || this.groundTruthToAdd.trim().length === 0) {
-        this.errDialogMessage = 'Pole pre otázku alebo odpoveď je prázdne. Pre pridanie musíte zadať oboje.'
+      if (this.questionsToAdd.trim().length === 0) {
+        this.errDialogMessage = 'Nezadali ste žiadne otázky a odpovede.'
         this.errDialog = true
         return;
       }
       
+      const questions = this.questionsToAdd.split('\n');
+      const store = useChatStore();
+
       try {
-        const responseAdd = await fetch('http://127.0.0.1:5000/add-question', { //volanie endpointu na pridanie otazky do DB
+        const responseAdd = await fetch('http://127.0.0.1:5000/add-questions', { //volanie endpointu na pridanie otazky do DB
           method: 'POST',
           headers: {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({ 
-              question: this.questionToAdd,
-              ground_truth: this.groundTruthToAdd,
+              questions: questions,
+              search_type: store.getType
             }),
         })
 
         if (!responseAdd.ok) {
-          throw new Error('Failed to add question to DB');
+          throw new Error('Failed to add questions to DB');
         }
 
-        const responseGet = await fetch('http://127.0.0.1:5000/get-questions', { //ziskanie otazok z DB, aby sa aktualizoval ich zoznam v UI
+        const responseGet = await fetch('http://127.0.0.1:5000/get-all-questions', { //ziskanie otazok z DB, aby sa aktualizoval ich zoznam v UI
           method: 'GET'
         })
 
@@ -331,14 +334,13 @@ export default defineComponent({
         }
 
         const responseData = await responseGet.json();
-        this.questions = responseData.questions;        
+        this.questionsAll = responseData.questions;        
 
       } catch (error) {
         console.log(error)
       }
 
-      this.questionToAdd = '';
-      this.groundTruthToAdd = '';
+      this.questionsToAdd = '';
     },
 
     async deleteQuestion(question: string) {
@@ -357,7 +359,7 @@ export default defineComponent({
           throw new Error('Failed to delete question from DB');
         }
 
-        const responseGet = await fetch('http://127.0.0.1:5000/get-questions', { //ziskanie otazok z DB, aby sa aktualizoval ich zoznam v UI
+        const responseGet = await fetch('http://127.0.0.1:5000/get-all-questions', { //ziskanie otazok z DB, aby sa aktualizoval ich zoznam v UI
           method: 'GET'
         })
 
@@ -366,10 +368,52 @@ export default defineComponent({
         }
 
         const responseData = await responseGet.json();
-        this.questions = responseData.questions;  
+        this.questionsAll = responseData.questions;  
       } catch (error) {
         console.log(error)
       }
+    },
+
+    async openEditQuestions() {
+      try {
+        const response = await fetch('http://127.0.0.1:5000/get-all-questions', { //ziskanie otazok z DB, aby sa aktualizoval ich zoznam v UI
+          method: 'GET'
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch questions');
+        }
+
+        const responseData = await response.json();
+        this.questionsAll = responseData.questions; 
+      } catch (error) {
+        console.log(error);
+      }
+
+      this.testDialog = false;
+      this.editQuestions = true;
+    },
+
+    async backToEvaluate() {
+      try {
+        const response = await fetch('http://127.0.0.1:5000/get-unevaluated-questions', {
+          method: 'GET',
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch questions from the backend');
+        }
+
+        const responseData = await response.json();
+        this.questionsToEval = responseData.questions;
+
+        this.testDialog = true;
+      } catch (error) {
+        console.log(error);
+      }
+
+      this.editQuestions = false;
+      this.testDialog = true;
     },
   },
 
@@ -383,10 +427,10 @@ export default defineComponent({
       currentAnswer: '',
       currentContexts: [] as string [],
       testDialog: false,
-      questions: '',
+      questionsToEval: [] as string [],
+      questionsAll: [] as Question [],
       editQuestions: false,
-      questionToAdd: '',
-      groundTruthToAdd: '',
+      questionsToAdd: '',
       errDialog: false,
       errDialogMessage: '',
     };
@@ -406,6 +450,18 @@ export default defineComponent({
   min-width: 80vw;
   max-width: 90vw;
   max-height: 80vh;
+}
+
+.add-questions-texarea {
+  width: 100%;
+  max-height: 250px;
+  overflow-y: auto;
+  margin-bottom: 1%;
+  padding: 0.5%;
+}
+
+.add-questions-texarea .q-field__control .q-field__native {
+  color: rgb(0, 0, 0);
 }
 
 .del-question-button {

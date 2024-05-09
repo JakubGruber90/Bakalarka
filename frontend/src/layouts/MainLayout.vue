@@ -11,12 +11,12 @@
           <q-dialog v-model="resultDialog" maximized>
             <q-card>
 
-              <q-card-actions>
-                <q-btn icon="close" fab-mini @click="resultDialog = false" />
+              <q-card-actions align="right">
+                <q-btn style="background-color: #91b6dc;" icon="close" fab-mini @click="resultDialog = false" />
               </q-card-actions>
 
               <q-card-section>
-                TU BUDU VYSLEDKY TESTOVANIA V JEDNOTLIVYCH STLPCOCH NACITAVANE CEZ ONLOAD PO CHUNKOCH
+                CHARTS HERE
               </q-card-section>
 
             </q-card>

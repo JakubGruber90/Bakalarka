@@ -10,3 +10,8 @@ export interface Citation {
     filepath: string,
     chunk_id: string
 }
+
+export interface Question {
+    text: string,
+    eval: boolean
+}

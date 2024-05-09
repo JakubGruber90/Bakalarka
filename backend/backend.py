@@ -70,6 +70,7 @@ migrate = Migrate(app, db)
 class Questions(db.Model):
     __tablename__ = 'questions'
     id = db.Column(db.Integer, primary_key=True)
+    search_type = db.Column(db.Text)
     text = db.Column(db.Text)
     answer = db.Column(db.Text)
     contexts = db.relationship('Contexts', backref='questions')
@@ -234,24 +235,59 @@ def ragas_test():
         db.session.rollback()
         print('Error saving data to DB: ', e)
 
-@app.route('/get-questions', methods=['GET'])
-def get_questions():
+@app.route('/get-all-questions', methods=['GET'])
+def get_all_questions():
     try:
-        questions_rows = db.session.query(Questions.text).all()
+        questions_rows = db.session.query(Questions).all()
+        
+        questions = []
+        
+        for row in questions_rows:
+            is_evaluated = bool
+            
+            if (row.answer == None and row.faithfulness == None and row.answer_relevancy == None and row.context_recall == None and row.context_precision == None): #ak su tieto stlpce prazdne, znamena to, ze otazka nebola vyhodnotena
+                is_evaluated = False
+            else:
+                is_evaluated = True
+            
+            question_dict = {
+                'text': row.text,
+                'eval': is_evaluated
+            }
+            
+            questions.append(question_dict)
+                
+    except Exception as e:
+        print('Error getting questions from DB: ', e)
+        
+    return jsonify({'questions': questions})
+
+@app.route('/get-unevaluated-questions', methods=['GET'])
+def get_unevaluated_questions():
+    try:
+        questions_rows = db.session.query(Questions).\
+            filter(Questions.answer.is_(None)).\
+            filter(Questions.faithfulness.is_(None)).\
+            filter(Questions.context_recall.is_(None)).\
+            filter(Questions.context_precision.is_(None)).all()   
+                
         questions_text = [row.text for row in questions_rows]
     except Exception as e:
         print('Error getting questions from DB: ', e)
         
     return jsonify({'questions': questions_text})
 
-@app.route('/add-question', methods=['POST'])
-def add_question():
+@app.route('/add-questions', methods=['POST'])
+def add_questions():
     try:
-        question_text = request.json.get('question')
-        ground_truth_text = request.json.get('ground_truth')
+        questionsArr = request.json.get('questions')
+        searchType = request.json.get('search_type')
         
-        question_to_add = Questions(text=question_text, ground_truth=ground_truth_text)
-        db.session.add(question_to_add)
+        for value in questionsArr:
+            question_truth_pair = value.split(' | ')
+            question_to_add = Questions(search_type=searchType, text=question_truth_pair[0], ground_truth=question_truth_pair[1])
+            
+            db.session.add(question_to_add)
         
         db.session.commit()
         
