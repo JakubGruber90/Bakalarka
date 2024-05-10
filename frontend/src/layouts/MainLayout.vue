@@ -16,7 +16,9 @@
               </q-card-actions>
 
               <q-card-section>
-                CHARTS HERE
+                <!--<span style="font-size: 20px" v-if="evalResults.length === 0">Nie sú otestované žiadne výsledky</span>-->
+                <q-btn label="Ukázať graf" @click="showResults()" /><br>
+                <canvas ref="my_chart" width="800" height="200"></canvas>
               </q-card-section>
 
             </q-card>
@@ -71,6 +73,9 @@
 <script lang="ts">
 import { defineComponent, watch } from 'vue';
 import { useChatStore } from 'stores/app_states';
+import { Question } from 'src/components/models';
+import { Chart } from 'chart.js/auto';
+
 
 export default defineComponent({
   name: 'MainLayout',
@@ -86,6 +91,100 @@ export default defineComponent({
       frequence_penalty: 0,
       results: [],
       resultDialog: false,
+      evalResults: [],
+    }
+  },
+
+  methods: {
+    async showResults() {
+      try {
+        const response = await fetch('http://127.0.0.1:5000/get-evaluated-questions', {
+          method: 'GET'
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch evaluated questions from the backend');
+        }
+
+        const responseData = await response.json(); console.log(responseData);
+
+        const dataByLabel = responseData.questions.reduce((accumulator: Record<string, Record<string, number[]>>, question: Question) => {
+          const label = question.search_type;
+          if (!accumulator[label]) {
+            accumulator[label] = {
+              faithfulness: [],
+              relevancy: [],
+              recall: [],
+              precision: []
+            };
+          }
+          accumulator[label].faithfulness.push(question.faithfulness);
+          accumulator[label].relevancy.push(question.answer_relevancy);
+          accumulator[label].recall.push(question.context_recall);
+          accumulator[label].precision.push(question.context_precision);
+          return accumulator;
+        }, {});
+
+        const labels = Object.keys(dataByLabel);
+        const avgFaithfulnessData = labels.map(label => this.calculateAverage(dataByLabel[label].faithfulness));
+        const avgRelevancyData = labels.map(label => this.calculateAverage(dataByLabel[label].relevancy));
+        const avgRecallData = labels.map(label => this.calculateAverage(dataByLabel[label].recall));
+        const avgPrecisionData = labels.map(label => this.calculateAverage(dataByLabel[label].precision));
+
+        const ctx = (this.$refs.my_chart as HTMLCanvasElement).getContext('2d');
+
+        if (ctx !== null) {
+          new Chart(ctx, {
+            type: 'bar',
+            data: {
+              labels: labels,
+              datasets: [
+                {
+                  label: 'Faithfulness',
+                  data: avgFaithfulnessData,
+                  backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                  borderColor: 'rgba(75, 192, 192, 1)',
+                  borderWidth: 1
+                },
+                {
+                  label: 'Answer Relevancy',
+                  data: avgRelevancyData,
+                  backgroundColor: 'rgba(255, 99, 132, 0.7)',
+                  borderColor: 'rgba(255, 99, 132, 1)',
+                  borderWidth: 1
+                },
+                {
+                  label: 'Context Recall',
+                  data: avgRecallData,
+                  backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                  borderColor: 'rgba(54, 162, 235, 1)',
+                  borderWidth: 1
+                },
+                {
+                  label: 'Context Precision',
+                  data: avgPrecisionData,
+                  backgroundColor: 'rgba(255, 206, 86, 0.7)',
+                  borderColor: 'rgba(255, 206, 86, 1)',
+                  borderWidth: 1
+                }
+              ]
+            },
+            options: {
+              scales: {
+                y: {
+                  beginAtZero: true
+                }
+              }
+            }
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching or processing data:', error);
+      }
+    },
+
+    calculateAverage(array: number[]) {
+      return array.reduce((sum: number, value: number) => sum + value, 0) / array.length;
     }
   },
 

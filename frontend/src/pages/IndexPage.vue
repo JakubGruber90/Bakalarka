@@ -56,7 +56,9 @@
           <span style="font-size: 20px;">Pridať otázku so správnou odpoveďou do testovacieho datasetu (musíte dodržať požadovaný formát z príkladu):</span>
           <q-input autogrow standout="bg-grey-4" class="add-questions-texarea" v-model="questionsToAdd" 
             placeholder=
-          "Príklad:
+          "Dodržte prosím formát <otázka> | <odpoveď> s jednou takouto dvojicou na riadok
+            
+          Príklad:
           Koľko je 2+2 | 2+2 je 4
           Akej farby je banán | banán je žltý 
           ..." />

@@ -262,14 +262,49 @@ def get_all_questions():
         
     return jsonify({'questions': questions})
 
+@app.route('/get-evaluated-questions', methods=['GET'])
+def get_evaluated_questions():
+    try:
+        questions_rows = db.session.query(Questions).\
+            filter(Questions.answer.isnot(None)).\
+            filter(Questions.faithfulness.isnot(None)).\
+            filter(Questions.answer_relevancy.isnot(None)).\
+            filter(Questions.context_recall.isnot(None)).\
+            filter(Questions.context_precision.isnot(None)).\
+            filter(Questions.search_type.isnot(None)).all()   
+        
+        questions = []
+        
+        for row in questions_rows:
+            question_dict = {
+                'id': row.id,
+                'text': row.text,
+                'answer': row.answer,
+                'ground_truth': row.ground_truth,
+                'faithfulness': row.faithfulness,
+                'answer_relevancy': row.answer_relevancy,
+                'context_recall': row.context_recall,
+                'context_precision': row.context_precision,
+                'search_type': row.search_type,
+            }
+            
+            questions.append(question_dict)
+                
+    except Exception as e:
+        print('Error getting questions from DB: ', e)
+        
+    return jsonify({'questions': questions})
+
 @app.route('/get-unevaluated-questions', methods=['GET'])
 def get_unevaluated_questions():
     try:
         questions_rows = db.session.query(Questions).\
             filter(Questions.answer.is_(None)).\
             filter(Questions.faithfulness.is_(None)).\
+            filter(Questions.answer_relevancy.is_(None)).\
             filter(Questions.context_recall.is_(None)).\
-            filter(Questions.context_precision.is_(None)).all()   
+            filter(Questions.context_precision.is_(None)).\
+            filter(Questions.search_type.is_(None)).all()   
                 
         questions_text = [row.text for row in questions_rows]
     except Exception as e:
