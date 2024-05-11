@@ -61,7 +61,7 @@ app = Flask(__name__)
 
 CORS(app)
 
-db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'database', 'ragas_test_database.db'))
+db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'database', 'ragas_final.db'))
 app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
 
 db = SQLAlchemy(app)

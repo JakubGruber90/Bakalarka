@@ -7,18 +7,32 @@
           ChatGPT RAG čet
         </q-toolbar-title>
 
-        <q-btn class="layout-button" label="Výsledky testovania odpovedí" @click="resultDialog = true">
+        <q-btn class="layout-button" label="Výsledky testovania odpovedí" @click="showResults()">
           <q-dialog v-model="resultDialog" maximized>
             <q-card>
 
               <q-card-actions align="right">
+
+                <q-btn style="background-color: #91b6dc;" icon="help" fab-mini @click="graphHelp = true">
+                  <q-dialog v-model="graphHelp">
+                    <q-card>
+                      <q-card-section>
+                        <span>Na grafe sa zobrazujú priemery metrík <b>vierohodnosť (faithfulness)</b>, <b>relevantnosť odpovede (answer_relevancy)</b>, <b>vyvolanie kontextu (context_recall)</b> a <b>presnosť kontextu (context_precision)</b> vypočítaných pomocou frameworku RAGAS rozdelené na skupiny podľa typu vyhľadávania v indexe.</span>
+                      </q-card-section>
+
+                      <q-card-actions align="center">
+                        <q-btn style="background-color: #91b6dc;" label="OK" @click="graphHelp = false" />
+                      </q-card-actions>
+                    </q-card>
+                    </q-dialog>
+                </q-btn>
+
                 <q-btn style="background-color: #91b6dc;" icon="close" fab-mini @click="resultDialog = false" />
               </q-card-actions>
 
               <q-card-section>
-                <!--<span style="font-size: 20px" v-if="evalResults.length === 0">Nie sú otestované žiadne výsledky</span>-->
-                <q-btn label="Ukázať graf" @click="showResults()" /><br>
-                <canvas ref="my_chart" width="800" height="200"></canvas>
+                <span style="font-size: 20px;" v-if="!evalQuestions">Nie sú vyhodnotené žiadne otázky</span>
+                <canvas v-else ref="my_chart" width="800" height="200"></canvas>
               </q-card-section>
 
             </q-card>
@@ -92,11 +106,15 @@ export default defineComponent({
       results: [],
       resultDialog: false,
       evalResults: [],
+      evalQuestions: false,
+      graphHelp: false,
     }
   },
 
   methods: {
     async showResults() {
+      this.resultDialog = true; 
+      
       try {
         const response = await fetch('http://127.0.0.1:5000/get-evaluated-questions', {
           method: 'GET'
@@ -106,10 +124,29 @@ export default defineComponent({
           throw new Error('Failed to fetch evaluated questions from the backend');
         }
 
-        const responseData = await response.json(); console.log(responseData);
+        const responseData = await response.json();
+
+        if (responseData.questions.length === 0) {
+          this.evalQuestions = false;
+          return
+        } else {
+          this.evalQuestions = true;
+        }
 
         const dataByLabel = responseData.questions.reduce((accumulator: Record<string, Record<string, number[]>>, question: Question) => {
-          const label = question.search_type;
+          let label = '';
+          switch (question.search_type) {
+            case 'simple':
+              label = 'Plnotextové vyhľadávanie';
+              break;
+            case 'vector':
+              label = 'Vektorové vyhľadávanie'
+              break;
+            case 'vector_simple_hybrid':
+              label = 'Hybridné vyhľadávanie';
+              break;
+          }
+
           if (!accumulator[label]) {
             accumulator[label] = {
               faithfulness: [],
@@ -131,53 +168,55 @@ export default defineComponent({
         const avgRecallData = labels.map(label => this.calculateAverage(dataByLabel[label].recall));
         const avgPrecisionData = labels.map(label => this.calculateAverage(dataByLabel[label].precision));
 
-        const ctx = (this.$refs.my_chart as HTMLCanvasElement).getContext('2d');
+        this.$nextTick(() => {
+          const ctx = (this.$refs.my_chart as HTMLCanvasElement).getContext('2d');
 
-        if (ctx !== null) {
-          new Chart(ctx, {
-            type: 'bar',
-            data: {
-              labels: labels,
-              datasets: [
-                {
-                  label: 'Faithfulness',
-                  data: avgFaithfulnessData,
-                  backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                  borderColor: 'rgba(75, 192, 192, 1)',
-                  borderWidth: 1
-                },
-                {
-                  label: 'Answer Relevancy',
-                  data: avgRelevancyData,
-                  backgroundColor: 'rgba(255, 99, 132, 0.7)',
-                  borderColor: 'rgba(255, 99, 132, 1)',
-                  borderWidth: 1
-                },
-                {
-                  label: 'Context Recall',
-                  data: avgRecallData,
-                  backgroundColor: 'rgba(54, 162, 235, 0.7)',
-                  borderColor: 'rgba(54, 162, 235, 1)',
-                  borderWidth: 1
-                },
-                {
-                  label: 'Context Precision',
-                  data: avgPrecisionData,
-                  backgroundColor: 'rgba(255, 206, 86, 0.7)',
-                  borderColor: 'rgba(255, 206, 86, 1)',
-                  borderWidth: 1
-                }
-              ]
-            },
-            options: {
-              scales: {
-                y: {
-                  beginAtZero: true
+          if (ctx !== null) {
+            new Chart(ctx, {
+              type: 'bar',
+              data: {
+                labels: labels,
+                datasets: [
+                  {
+                    label: 'Vierohodnosť',
+                    data: avgFaithfulnessData,
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                  },
+                  {
+                    label: 'Relevantnosť odpovede',
+                    data: avgRelevancyData,
+                    backgroundColor: 'rgba(255, 99, 132, 0.7)',
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    borderWidth: 1
+                  },
+                  {
+                    label: 'Vyvolanie kontextu',
+                    data: avgRecallData,
+                    backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                  },
+                  {
+                    label: 'Presnosť kontextu',
+                    data: avgPrecisionData,
+                    backgroundColor: 'rgba(255, 206, 86, 0.7)',
+                    borderColor: 'rgba(255, 206, 86, 1)',
+                    borderWidth: 1
+                  }
+                ]
+              },
+              options: {
+                scales: {
+                  y: {
+                    beginAtZero: true
+                  }
                 }
               }
-            }
-          });
-        }
+            });
+          }
+        });
       } catch (error) {
         console.error('Error fetching or processing data:', error);
       }

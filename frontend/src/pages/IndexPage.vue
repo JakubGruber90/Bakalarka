@@ -510,6 +510,7 @@ export default defineComponent({
 }
 
 .citation-close {
+  background-color: #91b6dc;
   align-self: flex-end;
 }
 
