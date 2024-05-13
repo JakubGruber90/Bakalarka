@@ -6,9 +6,9 @@
 
     <div class="input-evaluate-container">
       <div class="input-container">
-        <textarea class="user-input" ref="user_input" placeholder="Sem píšte..." required autofocus v-model="messageText" @keypress.enter.prevent="sendMessage">
+        <textarea class="user-input" ref="user_input" placeholder="Sem píšte..." required autofocus v-model="messageText" @keypress.enter.prevent="sendMessage()">
         </textarea>
-        <q-btn class="send-button" round icon="send" @click="sendMessage" />
+        <q-btn class="send-button" round icon="send" @click="sendMessage()" />
       </div>
 
       <q-btn v-if="!isTesting" class="evaluate-button" label="Vyhodnotiť odpovede" @click="openTestDialog()">
@@ -37,7 +37,7 @@
         </q-dialog>
       </q-btn>
 
-      <div v-else style="background-color: #91b6dc; margin-left: 1%; margin-top: 2%; height: 70%; border-radius: 10px; padding: 1%"><span>Počet otázok v rade na testovanie {{ evalQuestionsLeft }}</span></div>  
+      <div v-else class="eval-questions-countdown"><span>Ostávajúce otázky: {{ evalQuestionsLeft }}</span></div>  
     </div>
 
     <q-drawer 
@@ -115,7 +115,7 @@ export default defineComponent({
   },
 
   methods: {
-    async sendMessage() {
+    async sendMessage(useHistory?: boolean) {
       this.messagesPresent = true;
 
       if (this.messageText === '') {
@@ -199,23 +199,25 @@ export default defineComponent({
           this.currentContexts.push(citation.content);
         })
 
-        if (store.getMessages.length > 10) {
-          store.deleteMessage();
-          store.deleteMessage();
+        if (useHistory) { //tu sa zbieraju srpravy pre historiu, ak sa testuje, tak je historia vypnuta
+          if (store.getMessages.length > 10) {
+            store.deleteMessage();
+            store.deleteMessage();
+          }
+
+          const userMessage: Message  = {
+          text: newMessageText.nodeValue || '',
+          role: 'user'
+          };
+
+          const botResponse: Message = {
+            text: botMessageContent.innerHTML || '',
+            role: 'assistant'
+          }
+
+          store.addMessage(userMessage);
+          store.addMessage(botResponse);
         }
-
-        const userMessage: Message  = {
-        text: newMessageText.nodeValue || '',
-        role: 'user'
-        };
-
-        const botResponse: Message = {
-          text: botMessageContent.innerHTML || '',
-          role: 'assistant'
-        }
-
-        store.addMessage(userMessage);
-        store.addMessage(botResponse);
 
         const cited_docs = botMessageContent.innerHTML?.match(/\[(doc\d\d?\d?)]/g);
         if (cited_docs && cited_docs.length > 0) { //pridavanie citacii po vlozeni sprav do store, aby neboli zahrnute v kontexte
@@ -276,7 +278,7 @@ export default defineComponent({
         
           while (retryNum < maxRetries) {
             this.messageText = question.text;
-            await this.sendMessage(); 
+            await this.sendMessage(false); 
 
             if (this.currentContexts.length === 0 || !this.answerFound) { //ak na danu otazku nie su kontexty, to znamena, ze sa na nu nenasla odpoved, tak skusim ju polozit znovu
               retryNum++;
@@ -602,6 +604,16 @@ export default defineComponent({
   margin-top: 2%;
   background-color: #91b6dc;
   height: 70%;
+}
+
+.eval-questions-countdown {
+  background-color: #91b6dc; 
+  margin-left: 1%; 
+  margin-top: 2%; 
+  height: 70%; 
+  border-radius: 10px; 
+  padding: 1%;
+  width: 190px;
 }
 
 .message-container {
