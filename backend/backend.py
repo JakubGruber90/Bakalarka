@@ -34,8 +34,8 @@ search_index = os.getenv("AZURE_AI_SEARCH_INDEX"),
 
 bot_system_message = '''You are a helpful assistant that answers questions. Here are some rules for you to follow: 
 1. Always answer in the Slovak language. 
-2. Use all neccessary diacritics. 
-3. Do not use english language except when it is neccessary like when explaining code or when there are english words in your input data. 
+2.ALWAYS ANSWER IN THE SLOVAK LANGUAGE. ALWAYS. NEVER USE ENGLISH OR ANY OTHER LANGUAGE IN YOUR RESPONSES-
+3. Use all neccessary diacritics og the Slovak language. 
 ''' #sprava pre model, ako sa ma spravat
 
 client = openai.AzureOpenAI( #pripojenie na Azure OpenAI endpoint pre vykonavanie API calls na generovanie odpovedi v chate
@@ -79,6 +79,11 @@ class Questions(db.Model):
     answer_relevancy = db.Column(db.Integer)
     context_recall = db.Column(db.Integer)
     context_precision = db.Column(db.Integer)
+    top_n_documents = db.Column(db.Integer)
+    strictness = db.Column(db.Integer)
+    temperature = db.Column(db.Integer)
+    presence_penalty = db.Column(db.Integer)
+    frequence_penalty = db.Column(db.Integer)
 
 class Contexts(db.Model):
     __tablename__ = 'contexts'
@@ -124,61 +129,83 @@ def send_message():
         message_list.append({"role": "user", "content": user_query})
       
     try:
-        @stream_with_context
-        def generate_response_stream_with_data():    
-            response = client.chat.completions.create( #poslanie requestu na azure openai api na odpoved modelu chatGPT-35-turbo s vlastnymi datami
-                model = openai_model_name,
-                stream=True,
-                messages = message_list,
-                temperature = tempr,
-                presence_penalty = pres_pen,
-                frequency_penalty = freq_pen,
-                extra_body={
-                    "data_sources": [
-                        {
-                            "type": "azure_search",
-                            "parameters": {
-                                "endpoint": search_endpoint[0],
-                                "authentication": {
-                                    "type": "api_key",
-                                    "key": search_key
+        if (use_own_data) :
+            @stream_with_context
+            def generate_response_stream_with_data():    
+                response = client.chat.completions.create( #poslanie requestu na azure openai api na odpoved modelu chatGPT-35-turbo s vlastnymi datami
+                    model = openai_model_name,
+                    stream=True,
+                    messages = message_list,
+                    temperature = tempr,
+                    presence_penalty = pres_pen,
+                    frequency_penalty = freq_pen,
+                    extra_body={
+                        "data_sources": [
+                            {
+                                "type": "azure_search",
+                                "parameters": {
+                                    "endpoint": search_endpoint[0],
+                                    "authentication": {
+                                        "type": "api_key",
+                                        "key": search_key
+                                        },
+                                    "index_name": search_index[0],
+                                    "query_type": search_type,
+                                    "embedding_dependency": {
+                                        "type": "deployment_name",
+                                        "deployment_name": "text-embedding-ada-002"
                                     },
-                                "index_name": search_index[0],
-                                "query_type": search_type,
-                                "embedding_dependency": {
-                                    "type": "deployment_name",
-                                    "deployment_name": "text-embedding-ada-002"
-                                },
-                                "in_scope": use_own_data,
-                                "top_n_documents": topNDocs, 
-                                "strictness": strict, 
-                                "fields_mapping": {
-                                    "title_field": "title",
-                                    "url_field": "url",
-                                    "filepath_field": "filepath",
-                                    "content_fields": ["content"],
-                                    "vector_fields": ["contentVector"]
-                                },
+                                    "top_n_documents": topNDocs, 
+                                    "strictness": strict, 
+                                    "fields_mapping": {
+                                        "title_field": "title",
+                                        "url_field": "url",
+                                        "filepath_field": "filepath",
+                                        "content_fields": ["content"],
+                                        "vector_fields": ["contentVector"]
+                                    },
+                                }
                             }
-                        }
-                    ]
-                }
-            )
-                
-            for chunk in response:
-                print('\nEVENT:\n', chunk)
-                if chunk.choices[0].delta.content is not None:
-                    response_message = chunk.choices[0].delta.content
-                    yield json.dumps({'message': response_message})+'/|/'
+                        ]
+                    }
+                )
+                    
+                for chunk in response:
+                    print('\nEVENT:\n', chunk)
+                    if chunk.choices[0].delta.content is not None:
+                        response_message = chunk.choices[0].delta.content
+                        yield json.dumps({'message': response_message})+'/|/'
+                            
+                    try:
+                        if chunk.choices[0].delta.content is None and chunk.choices[0].delta.context is not None:
+                            citations = chunk.choices[0].delta.context                
+                            yield json.dumps({'context': citations})+'/|/'
+                    except Exception as err:
+                        print('\nERROR GETTING CITATIONS: ', err, '\n')
                         
-                try:
-                    if chunk.choices[0].delta.content is None and chunk.choices[0].delta.context is not None:
-                        citations = chunk.choices[0].delta.context                
-                        yield json.dumps({'context': citations})+'/|/'
-                except Exception as err:
-                    print('\nERROR GETTING CITATIONS: ', err, '\n')
+            return Response(generate_response_stream_with_data(), mimetype="application/json")
+        else:
+            def generate_response_stream_without_data():    
+                response = client.chat.completions.create( #poslanie requestu na azure openai api na odpoved modelu chatGPT-35-turbo s vlastnymi datami
+                    model = openai_model_name,
+                    stream=True,
+                    messages = message_list,
+                    temperature = tempr,
+                    presence_penalty = pres_pen,
+                    frequency_penalty = freq_pen,
+                )
+                    
+                for chunk in response:
+                    print('\nEVENT:\n', chunk)
+                    try:
+                        if chunk.choices[0].delta.content is not None:
+                            response_message = chunk.choices[0].delta.content
+                            yield json.dumps({'message': response_message})+'/|/'
+                    except Exception as e:
+                        print('ERROR GETTING CONTENT FROM CHUNK: ', e)
+                        
                                     
-        return Response(generate_response_stream_with_data(), mimetype="application/json")
+            return Response(generate_response_stream_without_data(), mimetype="application/json")
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -188,11 +215,18 @@ def ragas_test():
     try:
         @retry(wait=wait_random_exponential(multiplier=1, max=60), stop=stop_after_attempt(6), retry=retry_if_exception_type(openai.RateLimitError))
         def save_data_to_db():
-            question_text = request.json.get('question')
-            question = db.session.query(Questions).filter(Questions.text == question_text).first()
+            question_id = request.json.get('id')
+            question = db.session.query(Questions).filter(Questions.id == question_id).first()
                 
+            question_text = question.text
             answer = request.json.get('answer')
             contexts = request.json.get('contexts')
+            search_type = request.json.get('search_type')
+            top_n_docs = request.json.get('top_n_documents')
+            strictness = request.json.get('strictness')
+            temperature = request.json.get('temperature')
+            presence_penalty = request.json.get('presence_penalty')
+            frequence_penalty = request.json.get('frequence_penalty')
             ground_truth = question.ground_truth
                             
             data_samples = {
@@ -208,10 +242,10 @@ def ragas_test():
                 llm= language_model,
                 embeddings= embbed_model,
                 metrics = [
-                    faithfulness, #meria vecný súlad vygenerovanej odpovede s daným kontextom. Vygenerovaná odpoveď sa považuje za vernú, ak všetky tvrdenia, ktoré sú v odpovedi uvedené, možno odvodiť z daného kontextu. Na výpočet sa najprv identifikuje množina tvrdení z vygenerovanej odpovede. Potom sa každé z týchto tvrdení porovná s daným kontextom, aby sa určilo, či sa dá z daného kontextu odvodiť, alebo nie.
-                    answer_relevancy, #Metrika hodnotenia, Relevancia odpovede, sa zameriava na posúdenie toho, do akej miery je vygenerovaná odpoveď relevantná k danej otázke. Nižšie skóre sa prideľuje odpovediam, ktoré sú neúplné alebo obsahujú nadbytočné informácie, a vyššie skóre znamená lepšiu relevantnosť. Odpoveď sa považuje za relevantnú, ak priamo a vhodne reaguje na pôvodnú otázku. Dôležité je, že pri posudzovaní relevantnosti odpovede neberieme do úvahy fakticitu, ale penalizujeme prípady, keď odpoveď nie je úplná alebo obsahuje nadbytočné údaje. Na výpočet tohto skóre je LLM vyzvaný, aby viackrát vygeneroval vhodnú otázku pre vygenerovanú odpoveď, a meria sa priemerná kosínusová podobnosť medzi týmito vygenerovanými otázkami a pôvodnou otázkou. Základnou myšlienkou je, že ak vygenerovaná odpoveď presne odpovedá na pôvodnú otázku, LLM by mal byť schopný z odpovede vygenerovať otázky, ktoré sú v súlade s pôvodnou otázkou.
-                    context_recall, #Spätná väzba kontextu meria, do akej miery sa načítaný kontext zhoduje s anotovanou odpoveďou. Na odhad vyvolania kontextu zo základnej pravdivej odpovede sa každá veta v základnej pravdivej odpovedi analyzuje s cieľom určiť, či ju možno priradiť k vyhľadanému kontextu alebo nie. V ideálnom prípade by sa všetky vety v základnej pravdivej odpovedi mali priradiť k vyhľadanému kontextu.
-                    context_precision, #Presnosť kontextu je metrika, ktorá hodnotí, či sú všetky základné pravdivé relevantné položky prítomné v kontextoch zaradené vyššie alebo nie. V ideálnom prípade sa všetky relevantné časti musia objaviť na najvyšších priečkach.
+                    faithfulness, 
+                    answer_relevancy, 
+                    context_recall, 
+                    context_precision, 
                 ]
             )
                 
@@ -220,11 +254,18 @@ def ragas_test():
             question.answer_relevancy = result['answer_relevancy']
             question.context_recall = result['context_recall']
             question.context_precision = result['context_precision']
+            question.search_type = search_type
+            question.top_n_documents = top_n_docs
+            question.strictness = strictness
+            question.temperature = temperature
+            question.presence_penalty = presence_penalty
+            question.frequence_penalty = frequence_penalty
+            
+            new_contexts = []
+            for context in contexts:
+                new_contexts.append(Contexts(text=context, question_id=question.id))
                 
-            contexts_json = json.dumps(contexts)
-            new_context = Contexts(text=contexts_json, question_id=question.id)
-            db.session.add(new_context)
-                
+            db.session.add_all(new_contexts)
             db.session.commit()
             
         save_data_to_db()
@@ -251,6 +292,7 @@ def get_all_questions():
                 is_evaluated = True
             
             question_dict = {
+                'id': row.id,
                 'text': row.text,
                 'eval': is_evaluated
             }
@@ -270,8 +312,7 @@ def get_evaluated_questions():
             filter(Questions.faithfulness.isnot(None)).\
             filter(Questions.answer_relevancy.isnot(None)).\
             filter(Questions.context_recall.isnot(None)).\
-            filter(Questions.context_precision.isnot(None)).\
-            filter(Questions.search_type.isnot(None)).all()   
+            filter(Questions.context_precision.isnot(None)).all()  
         
         questions = []
         
@@ -303,24 +344,33 @@ def get_unevaluated_questions():
             filter(Questions.faithfulness.is_(None)).\
             filter(Questions.answer_relevancy.is_(None)).\
             filter(Questions.context_recall.is_(None)).\
-            filter(Questions.context_precision.is_(None)).\
-            filter(Questions.search_type.is_(None)).all()   
+            filter(Questions.context_precision.is_(None)).all() 
                 
-        questions_text = [row.text for row in questions_rows]
+        questions = []
+        for row in questions_rows:
+            question_dict = {
+                'id': row.id,
+                'text': row.text
+            }
+            
+            questions.append(question_dict)
+            
     except Exception as e:
         print('Error getting questions from DB: ', e)
         
-    return jsonify({'questions': questions_text})
+    return jsonify({'questions': questions})
 
 @app.route('/add-questions', methods=['POST'])
 def add_questions():
     try:
         questionsArr = request.json.get('questions')
-        searchType = request.json.get('search_type')
         
-        for value in questionsArr:
+        for value in questionsArr: #osetrenie zleho rozdelenia otazky (v zadanych otazkach mozu byt \n navyse)
+            if value == '':
+                continue
+            
             question_truth_pair = value.split(' | ')
-            question_to_add = Questions(search_type=searchType, text=question_truth_pair[0], ground_truth=question_truth_pair[1])
+            question_to_add = Questions(text=question_truth_pair[0], ground_truth=question_truth_pair[1])
             
             db.session.add(question_to_add)
         
@@ -335,13 +385,14 @@ def add_questions():
 @app.route('/del-question', methods=['POST'])
 def del_question():
     try:
-        question_to_del_text = request.json.get('question')
-        question_to_del = db.session.query(Questions).filter(Questions.text == question_to_del_text).first()
+        question_id = request.json.get('question_id')
+        question_to_del = db.session.query(Questions).filter(Questions.id == question_id).first()
         contexts_to_del = db.session.query(Contexts).filter(Contexts.question_id == question_to_del.id).all()
         
         db.session.delete(question_to_del)
         if contexts_to_del:
-            db.session.delete(contexts_to_del)
+            for context in contexts_to_del:
+                db.session.delete(context)
         
         db.session.commit()
         

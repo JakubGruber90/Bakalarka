@@ -11,7 +11,7 @@
         <q-btn class="send-button" round icon="send" @click="sendMessage" />
       </div>
 
-      <q-btn class="evaluate-button" label="Vyhodnotiť odpovede" @click="openTestDialog()">
+      <q-btn v-if="!isTesting" class="evaluate-button" label="Vyhodnotiť odpovede" @click="openTestDialog()">
         <q-dialog v-model="testDialog">
           <q-card class="evaluate-cards">
             
@@ -24,7 +24,7 @@
             </div>
 
             <q-card-section v-else v-for="(question, index) in questionsToEval" :key="index">
-              {{ index+1 }}.) {{ question }}
+              {{ index+1 }}.) {{ question.text }}
             </q-card-section>
 
             <q-card-actions align="around">
@@ -35,7 +35,9 @@
 
           </q-card>
         </q-dialog>
-      </q-btn>      
+      </q-btn>
+
+      <div v-else style="background-color: #91b6dc; margin-left: 1%; margin-top: 2%; height: 70%; border-radius: 10px; padding: 1%"><span>Počet otázok v rade na testovanie {{ evalQuestionsLeft }}</span></div>  
     </div>
 
     <q-drawer 
@@ -73,7 +75,7 @@
         </div>
 
         <q-card-section v-else v-for="(question, index) in questionsAll" :key="index">
-          <div style="margin: 1%">{{ index+1 }}.) {{ question.text }} <span v-if="question.eval"><b>[VYHODNOTENÁ]</b></span> <q-btn fab-mini class="del-question-button" icon="delete" @click="deleteQuestion(question.text)" /></div><br><hr>
+          <div style="margin: 1%">{{ index+1 }}.) {{ question.text }} <span v-if="question.eval"><b>[VYHODNOTENÁ]</b></span> <q-btn fab-mini class="del-question-button" icon="delete" @click="deleteQuestion(question.id)" /></div><br><hr>
         </q-card-section>
 
         <q-card-actions align="center">
@@ -217,6 +219,8 @@ export default defineComponent({
 
         const cited_docs = botMessageContent.innerHTML?.match(/\[(doc\d\d?\d?)]/g);
         if (cited_docs && cited_docs.length > 0) { //pridavanie citacii po vlozeni sprav do store, aby neboli zahrnute v kontexte
+          this.answerFound = true; 
+
           const unique_cited_docs = cited_docs?.filter((value, index, self) => {
             return self.indexOf(value) === index;
           })
@@ -235,6 +239,8 @@ export default defineComponent({
               botMessageContent.appendChild(document.createElement('br'));
             }
           });
+        } else {
+          this.answerFound = false; //ak v odpovedi nie su citovane zdroje, znamena to, ze jazykovy model odpoved nenasiel
         }
 
       } catch (error) {
@@ -250,6 +256,9 @@ export default defineComponent({
     },
 
     async ragasEvaluate() {
+      this.testDialog = false;
+      this.isTesting = true;
+
       try {
         if (this.questionsToEval.length === 0) { //ak v databaze nie su otazky, ktore by sa dali testovat, tak testovanie neprebehne
           this.errDialogMessage = 'V databáze nie sú žiadne otázky, ktoré by sa dali testovať. Najprv do nej pridajte otázky.';
@@ -257,26 +266,53 @@ export default defineComponent({
           return
         }
 
-        for (const question of this.questionsToEval) {
-          this.messageText = question;
-          await this.sendMessage(); 
+        const store = useChatStore();
+        let currentQuestionIndex = 0;
+        let maxRetries = 3;
 
-          const postResponse = await fetch('http://127.0.0.1:5000/ragas-test', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ 
-              question: question,
-              answer: this.currentAnswer,
-              contexts: this.currentContexts,
-            }),
-          });
+        while (currentQuestionIndex < this.questionsToEval.length) {
+          let retryNum = 0;
+          const question = this.questionsToEval[currentQuestionIndex];
+        
+          while (retryNum < maxRetries) {
+            this.messageText = question.text;
+            await this.sendMessage(); 
 
-          if (!postResponse.ok) {
-            throw new Error('Failed to send data to the backend');
+            if (this.currentContexts.length === 0 || !this.answerFound) { //ak na danu otazku nie su kontexty, to znamena, ze sa na nu nenasla odpoved, tak skusim ju polozit znovu
+              retryNum++;
+              continue;
+            }
+
+            const postResponse = await fetch('http://127.0.0.1:5000/ragas-test', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                id: question.id,
+                answer: this.currentAnswer,
+                contexts: this.currentContexts,
+                search_type: store.getType,
+                top_n_documents: store.getTopNDocs,
+                strictness: store.getStrictness,
+                temperature: store.getTemperature,
+                presence_penalty: store.getPresencePenalty,
+                frequence_penalty: store.getFrequencePenalty
+              }),
+            });
+
+            if (!postResponse.ok) {
+              throw new Error('Failed to send data to the backend');
+            }
+
+            break;
           }
+          
+          this.evalQuestionsLeft--;
+          currentQuestionIndex++;
         }
+
+        this.isTesting = false;
       } catch (error) {
         console.log(error);
       }
@@ -294,6 +330,7 @@ export default defineComponent({
 
         const responseData = await response.json();
         this.questionsToEval = responseData.questions;
+        this.evalQuestionsLeft = this.questionsToEval.length;
 
         this.testDialog = true;
       } catch (error) {
@@ -309,7 +346,6 @@ export default defineComponent({
       }
       
       const questions = this.questionsToAdd.split('\n');
-      const store = useChatStore();
 
       try {
         const responseAdd = await fetch('http://127.0.0.1:5000/add-questions', { //volanie endpointu na pridanie otazky do DB
@@ -319,7 +355,6 @@ export default defineComponent({
             },
             body: JSON.stringify({ 
               questions: questions,
-              search_type: store.getType
             }),
         })
 
@@ -345,7 +380,7 @@ export default defineComponent({
       this.questionsToAdd = '';
     },
 
-    async deleteQuestion(question: string) {
+    async deleteQuestion(question: number) {
       try {
         const responseDel = await fetch('http://127.0.0.1:5000/del-question', { //volanie endpointu na odstranenie otazky z DB
           method: 'POST',
@@ -353,7 +388,7 @@ export default defineComponent({
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({ 
-              question: question,
+              question_id: question,
             }),
         })
 
@@ -429,12 +464,15 @@ export default defineComponent({
       currentAnswer: '',
       currentContexts: [] as string [],
       testDialog: false,
-      questionsToEval: [] as string [],
+      questionsToEval: [] as Question [],
+      evalQuestionsLeft: 0,
+      isTesting: false,
       questionsAll: [] as Question [],
       editQuestions: false,
       questionsToAdd: '',
       errDialog: false,
       errDialogMessage: '',
+      answerFound: false,
     };
   }
 });
