@@ -1,9 +1,9 @@
-export interface Message {
+export interface Message { //rozhranie správy
     text: string,
     role: 'assistant' | 'user'
 }
 
-export interface Citation {
+export interface Citation { //rozhranie citácie
     content: string,
     title: string,
     url: string,
@@ -11,7 +11,7 @@ export interface Citation {
     chunk_id: string
 }
 
-export interface Question {
+export interface Question { //rozhranie otázky
     id: number,
     text: string,
     answer: string,
@@ -21,5 +21,5 @@ export interface Question {
     context_recall: number,
     context_precision: number,
     search_type: string,
-    eval: boolean
+    eval: 'evaluated' | 'unevaluated' | 'unanswered'
 }

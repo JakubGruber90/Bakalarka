@@ -17,7 +17,7 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      - ./database/ragas_final.db:/database/ragas_final.db
+      - ./database/test.db:/database/test.db
     networks:
       - app-network
 

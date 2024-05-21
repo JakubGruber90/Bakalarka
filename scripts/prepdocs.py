@@ -17,7 +17,7 @@ from azure.search.documents.indexes.models import (
     PrioritizedFields,
     VectorSearch,
     VectorSearchAlgorithmConfiguration,
-    HnswParameters
+    HnswParameters,
 )
 from azure.search.documents import SearchClient
 from azure.ai.formrecognizer import DocumentAnalysisClient
@@ -34,10 +34,10 @@ def create_search_index(index_name, index_client):
             fields=[
                 SearchableField(name="id", type="Edm.String", key=True),
                 SearchableField(
-                    name="content", type="Edm.String", analyzer_name="en.lucene"
+                    name="content", type="Edm.String", analyzer_name="sk.microsoft"
                 ),
                 SearchableField(
-                    name="title", type="Edm.String", analyzer_name="en.lucene"
+                    name="title", type="Edm.String", analyzer_name="sk.microsoft"
                 ),
                 SearchableField(name="filepath", type="Edm.String"),
                 SearchableField(name="url", type="Edm.String"),
@@ -67,7 +67,7 @@ def create_search_index(index_name, index_client):
                         hnsw_parameters=HnswParameters(metric="cosine")
                     )
                 ]
-            )
+            ),
         )
         print(f"Creating {index_name} search index")
         index_client.create_index(index)
@@ -140,7 +140,7 @@ def create_and_populate_index(
         use_layout=True,
         ignore_errors=False,
         njobs=1,
-        add_embeddings=True, #KUBO: bolo False
+        add_embeddings=True, 
         azure_credential=azd_credential,
         embedding_endpoint=embedding_endpoint
     )
